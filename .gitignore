@@ -1,0 +1,17 @@
+.env
+.env.*
+!.env.example
+
+node_modules/
+data/
+logs/
+tmp/
+
+*.log
+*.tgz
+*.zip
+
+dist/
+coverage/
+.turbo/
+.cache/

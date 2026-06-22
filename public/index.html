@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Binance Spot Quant Bot</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Binance Spot Quant Bot</p>
+          <h1>币安现货量化控制台</h1>
+        </div>
+        <div class="top-actions">
+          <span id="updatedAt">等待数据</span>
+          <button id="refreshBtn" type="button">刷新</button>
+        </div>
+      </header>
+
+      <section class="metrics">
+        <div class="metric"><span>新买入</span><strong id="liveTrading">-</strong></div>
+        <div class="metric"><span>卖出保护</span><strong id="exitTrading">-</strong></div>
+        <div class="metric"><span>AI 复核</span><strong id="aiReview">-</strong></div>
+        <div class="metric"><span>AI Key</span><strong id="aiKey">-</strong></div>
+        <div class="metric"><span>回测闸门</span><strong id="backtestGuard">-</strong></div>
+        <div class="metric"><span>回测本金</span><strong id="backtestCapital">-</strong></div>
+        <div class="metric"><span>单笔上限</span><strong id="maxOrder">-</strong></div>
+        <div class="metric"><span>最大仓位数</span><strong id="maxPositions">-</strong></div>
+        <div class="metric"><span>单仓止损上限</span><strong id="maxLoss">-</strong></div>
+        <div class="metric"><span>买入循环</span><strong id="buyLoop">-</strong></div>
+        <div class="metric"><span>卖出守护</span><strong id="exitLoop">-</strong></div>
+      </section>
+
+      <section class="toolbar">
+        <button id="scanOnceBtn" type="button">扫描一次</button>
+        <button id="exitOnceBtn" type="button">卖出检查一次</button>
+        <button id="startExitBtn" type="button">启动卖出守护</button>
+        <button id="stopExitBtn" type="button">停止卖出守护</button>
+        <button id="startBuyBtn" type="button">启动自动扫描</button>
+        <button id="stopBuyBtn" type="button">停止自动扫描</button>
+      </section>
+
+      <section class="layout">
+        <section class="panel">
+          <div class="panel-title">
+            <h2>当前持仓</h2>
+            <span id="symbols">-</span>
+          </div>
+          <div id="positions" class="list empty">暂无持仓</div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-title">
+            <h2>策略与回测</h2>
+            <span id="strategyBrief">-</span>
+          </div>
+          <div id="backtest" class="list empty">暂无回测报告</div>
+        </section>
+      </section>
+
+      <section class="panel">
+        <div class="panel-title">
+          <h2>买卖与系统日志</h2>
+          <span id="eventCount">0 条</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>时间</th>
+                <th>类型</th>
+                <th>标的</th>
+                <th>价格</th>
+                <th>数量</th>
+                <th>说明</th>
+              </tr>
+            </thead>
+            <tbody id="events"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+    <script src="/app.js"></script>
+  </body>
+</html>
