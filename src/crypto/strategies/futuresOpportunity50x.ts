@@ -1,10 +1,11 @@
-import { emaVwapTrendStrategy } from "../strategy";
 import type { CryptoStrategy } from "../strategyTypes";
 import { roundTripCostPct } from "../tradeMath";
 import type { CryptoSignal } from "../types";
+import { videoEmaStructure50xStrategy } from "./videoEmaStructure50x";
 import { vwapBreakdownShortStrategy } from "./vwapBreakdownShort";
 
 const SELECTOR_COST_MULTIPLE = 4;
+const MAJOR_50X_SYMBOLS = new Set(["BTCUSDT", "ETHUSDT", "BNBUSDT"]);
 
 export interface OpportunitySelectorOptions {
   minExecutableTakeProfitPct?: number;
@@ -39,8 +40,22 @@ function blockThinTarget(signal: CryptoSignal, minExecutableTakeProfitPct?: numb
   };
 }
 
+function blockNonMajor(signal: CryptoSignal): CryptoSignal {
+  if (signal.action !== "buy" && signal.action !== "sell") {
+    return signal;
+  }
+  if (MAJOR_50X_SYMBOLS.has(signal.symbol.toUpperCase())) {
+    return signal;
+  }
+  return {
+    ...signal,
+    action: "hold",
+    reasons: [...signal.reasons, "50x execution is limited to BTCUSDT, ETHUSDT, BNBUSDT until altcoin paper evidence improves"]
+  };
+}
+
 export function chooseBestOpportunitySignal(signals: CryptoSignal[], options: OpportunitySelectorOptions = {}): CryptoSignal {
-  const costFilteredSignals = signals.map((signal) => blockThinTarget(signal, options.minExecutableTakeProfitPct));
+  const costFilteredSignals = signals.map((signal) => blockThinTarget(blockNonMajor(signal), options.minExecutableTakeProfitPct));
   const executable = ranked(costFilteredSignals).find((signal) => signal.action === "buy" || signal.action === "sell");
   if (executable) {
     return {
@@ -75,7 +90,7 @@ export const futuresOpportunity50xStrategy: CryptoStrategy = {
   label: "Futures 50x long-or-short opportunity selector",
   generateSignal: (input) => chooseBestOpportunitySignal(
     [
-      emaVwapTrendStrategy.generateSignal(input),
+      videoEmaStructure50xStrategy.generateSignal(input),
       vwapBreakdownShortStrategy.generateSignal(input)
     ],
     { minExecutableTakeProfitPct: roundTripCostPct(input.config) * SELECTOR_COST_MULTIPLE }

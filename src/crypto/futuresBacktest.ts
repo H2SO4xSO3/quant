@@ -207,6 +207,7 @@ export function backtestFuturesSymbolFromRows(options: {
   symbol: string;
   raw5m: BinanceKline[];
   raw15m: BinanceKline[];
+  rawHourly?: BinanceKline[];
   rawBenchmark5m?: BinanceKline[];
   rawBenchmark15m?: BinanceKline[];
   marginUsdt: number;
@@ -216,6 +217,7 @@ export function backtestFuturesSymbolFromRows(options: {
 }): FuturesBacktestSymbolResult {
   const rows5m = options.raw5m.map(parseKline).filter((row) => row.close > 0 && row.volume > 0);
   const rows15m = options.raw15m.map(parseKline).filter((row) => row.close > 0 && row.volume > 0);
+  const rowsHourly = (options.rawHourly ?? []).map(parseKline).filter((row) => row.close > 0 && row.volume > 0);
   const benchmarkRows5m = (options.rawBenchmark5m ?? options.raw5m).map(parseKline).filter((row) => row.close > 0 && row.volume > 0);
   const benchmarkRows15m = (options.rawBenchmark15m ?? options.raw15m).map(parseKline).filter((row) => row.close > 0 && row.volume > 0);
   const signalStrategy = options.signalStrategy ?? emaVwapTrendStrategy;
@@ -228,7 +230,8 @@ export function backtestFuturesSymbolFromRows(options: {
     const recentRows = rows5m.slice(Math.max(0, index - 239), index + 1);
     const longRecentRows = rows5m.slice(Math.max(0, index - 864), index + 1);
     const higherWindow = rows15m.filter((row) => row.openTime <= current.openTime).slice(-200);
-    const analysis = historicalAnalysis(options.symbol, recentRows, higherWindow, options.strategyConfig, longRecentRows);
+    const hourlyWindow = rowsHourly.filter((row) => row.openTime <= current.openTime).slice(-48);
+    const analysis = historicalAnalysis(options.symbol, recentRows, higherWindow, options.strategyConfig, longRecentRows, hourlyWindow);
     const benchmarkRecentRows = benchmarkRows5m.filter((row) => row.openTime <= current.openTime).slice(-240);
     const benchmarkHigherWindow = benchmarkRows15m.filter((row) => row.openTime <= current.openTime).slice(-200);
     if (benchmarkRecentRows.length >= 60 && benchmarkHigherWindow.length >= 20) {
@@ -356,9 +359,10 @@ export async function backtestFuturesSymbol(options: {
   futuresConfig: FuturesPaperConfig;
 }): Promise<FuturesBacktestSymbolResult> {
   const benchmarkSymbol = "BTCUSDT";
-  const [raw5m, raw15m, rawBenchmark5m, rawBenchmark15m] = await Promise.all([
+  const [raw5m, raw15m, rawHourly, rawBenchmark5m, rawBenchmark15m] = await Promise.all([
     fetchHistoricalKlines(options.client, options.symbol, "5m", options.days),
     fetchHistoricalKlines(options.client, options.symbol, "15m", options.days),
+    fetchHistoricalKlines(options.client, options.symbol, "1h", options.days),
     options.symbol === benchmarkSymbol ? Promise.resolve(undefined) : fetchHistoricalKlines(options.client, benchmarkSymbol, "5m", options.days),
     options.symbol === benchmarkSymbol ? Promise.resolve(undefined) : fetchHistoricalKlines(options.client, benchmarkSymbol, "15m", options.days)
   ]);
@@ -366,6 +370,7 @@ export async function backtestFuturesSymbol(options: {
     symbol: options.symbol,
     raw5m,
     raw15m,
+    rawHourly,
     rawBenchmark5m,
     rawBenchmark15m,
     marginUsdt: options.marginUsdt,

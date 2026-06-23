@@ -1,7 +1,8 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type { BinanceClient } from "./binanceClient";
-import { computeAtr, computeBollingerBands, computeDonchianCloseChannel, computeDonchianCloseChannels, computeRsi, computeVolatilityChannel, computeVolumeRatio, computeVwap, ema, parseKline } from "./indicators";
+import { analyzeChanStructure } from "./chanStructure";
+import { computeAtr, computeBollingerBands, computeDonchianCloseChannel, computeDonchianCloseChannels, computeHourlyStructure, computeRsi, computeVolatilityChannel, computeVolumeRatio, computeVwap, ema, parseKline } from "./indicators";
 import { assessMarketRegime } from "./marketRegime";
 import { emaVwapTrendStrategy } from "./strategy";
 import type { CryptoStrategy } from "./strategyTypes";
@@ -77,6 +78,7 @@ export interface BacktestResult {
 
 const FIVE_MINUTES = 5 * 60 * 1000;
 const FIFTEEN_MINUTES = 15 * 60 * 1000;
+const ONE_HOUR = 60 * 60 * 1000;
 const CACHE_MAX_AGE_MS = 12 * 60 * 60 * 1000;
 
 interface KlineCacheFile {
@@ -135,7 +137,7 @@ export async function fetchHistoricalKlines(client: BinanceClient, symbol: strin
     return cached;
   }
 
-  const intervalMs = interval === "15m" ? FIFTEEN_MINUTES : FIVE_MINUTES;
+  const intervalMs = interval === "1h" ? ONE_HOUR : interval === "15m" ? FIFTEEN_MINUTES : FIVE_MINUTES;
   const end = Date.now();
   let cursor = end - days * 24 * 60 * 60 * 1000;
   const rows: BinanceKline[] = [];
@@ -274,7 +276,8 @@ export function historicalAnalysis(
   rows: ParsedKline[],
   higherRows: ParsedKline[],
   strategy: CryptoStrategyConfig,
-  longRows: ParsedKline[] = rows
+  longRows: ParsedKline[] = rows,
+  hourlyRows: ParsedKline[] = []
 ): CryptoMarketAnalysis {
   const current = rows.at(-1)!;
   const price = current.close;
@@ -331,6 +334,8 @@ export function historicalAnalysis(
       volatilityChannel: computeVolatilityChannel(rows),
       donchianClose: computeDonchianCloseChannel(longRows),
       donchianCloseByPeriod: computeDonchianCloseChannels(longRows),
+      hourlyStructure: computeHourlyStructure(hourlyRows),
+      chan: analyzeChanStructure(rows),
       volumeRatio: computeVolumeRatio(rows),
       recentReturn6Pct,
       candleBodyPct,

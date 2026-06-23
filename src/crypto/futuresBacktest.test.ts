@@ -121,4 +121,41 @@ describe("futures backtest", () => {
     });
     expect(result.trades[0].pnlUsdt).toBe(-20);
   });
+
+  it("passes hourly structure and Chan structure into the tested strategy", () => {
+    const result = backtestFuturesSymbolFromRows({
+      symbol: "BNBUSDT",
+      raw5m: rowsWithExit({ high: 102, low: 99.8, close: 101 }),
+      raw15m: rowsWithExit({ high: 102, low: 99.8, close: 101 }),
+      rawHourly: [
+        row(0, { high: 100, low: 95, close: 99 }),
+        row(1, { high: 101, low: 96, close: 100 }),
+        row(2, { high: 102, low: 97, close: 101 }),
+        row(3, { high: 103, low: 98, close: 102 }),
+        row(4, { high: 104, low: 99, close: 103 }),
+        row(5, { high: 105, low: 100, close: 104 }),
+        row(6, { high: 108, low: 103, close: 107 })
+      ],
+      marginUsdt: 20,
+      strategyConfig: { ...DEFAULT_STRATEGY_CONFIG, signalExitScore: -1 },
+      futuresConfig,
+      signalStrategy: {
+        id: "requires-structure",
+        label: "Requires Structure",
+        generateSignal: ({ analysis, orderQuoteQty }) => ({
+          symbol: analysis.symbol,
+          action: analysis.technical?.hourlyStructure && analysis.technical.chan ? "buy" : "hold",
+          score: 100,
+          entryPrice: analysis.price,
+          stopLoss: 99,
+          takeProfit: 101,
+          orderQuoteQty,
+          reasons: ["requires hourly and chan"]
+        })
+      }
+    });
+
+    expect(result.trades).toHaveLength(1);
+    expect(result.trades[0].reason).toBe("take_profit");
+  });
 });

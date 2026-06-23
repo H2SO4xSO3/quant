@@ -12,6 +12,8 @@ const LONG_MAX_RSI = 75;
 const SHORT_MIN_RSI = 25;
 const SHORT_MAX_RSI = 48;
 const COST_MULTIPLE = 3;
+const MAX_50X_STOP_DISTANCE_PCT = 1.2;
+const MAX_50X_HOLDING_MINUTES = 60;
 
 type Direction = "long" | "short";
 
@@ -195,11 +197,11 @@ function stopLossFor(direction: Direction, analysis: CryptoMarketAnalysis, trend
   const atrBuffer = Math.max(trend.atr * 0.15, analysis.price * 0.0005);
   if (direction === "long") {
     const levels = [trend.emaFast, trend.emaSlow, structureLevel].filter((value): value is number => typeof value === "number" && value > 0 && value < analysis.price);
-    const base = levels.length > 0 ? Math.min(...levels) : analysis.price - trend.atr * 1.5;
+    const base = levels.length > 0 ? Math.max(...levels) : analysis.price - trend.atr * 1.5;
     return Math.min(analysis.price * 0.999, base - atrBuffer);
   }
   const levels = [trend.emaFast, trend.emaSlow, structureLevel].filter((value): value is number => typeof value === "number" && value > 0 && value > analysis.price);
-  const base = levels.length > 0 ? Math.max(...levels) : analysis.price + trend.atr * 1.5;
+  const base = levels.length > 0 ? Math.min(...levels) : analysis.price + trend.atr * 1.5;
   return Math.max(analysis.price * 1.001, base + atrBuffer);
 }
 
@@ -209,6 +211,7 @@ function buildSignal(direction: Direction, analysis: CryptoMarketAnalysis, order
   const entryPrice = analysis.price;
   const stopLoss = stopLossFor(direction, analysis, trend);
   const risk = Math.abs(entryPrice - stopLoss);
+  const stopDistancePct = entryPrice > 0 ? (risk / entryPrice) * 100 : 0;
   const takeProfit = direction === "long" ? entryPrice + risk * config.takeProfitRiskMultiple : entryPrice - risk * config.takeProfitRiskMultiple;
   const takeProfitPct = entryPrice > 0 ? (Math.abs(takeProfit - entryPrice) / entryPrice) * 100 : 0;
   const minCostAdjustedTakeProfitPct = roundTripCostPct(config) * COST_MULTIPLE;
@@ -216,6 +219,9 @@ function buildSignal(direction: Direction, analysis: CryptoMarketAnalysis, order
 
   if (takeProfitPct < config.minTakeProfitPct) {
     hardReasons.push(`Gross take-profit ${takeProfitPct.toFixed(2)}% does not clear the ${config.minTakeProfitPct}% minimum`);
+  }
+  if (stopDistancePct > MAX_50X_STOP_DISTANCE_PCT) {
+    hardReasons.push(`50x stop distance ${stopDistancePct.toFixed(2)}% is wider than the ${MAX_50X_STOP_DISTANCE_PCT.toFixed(2)}% liquidation buffer`);
   }
   if (takeProfitPct < minCostAdjustedTakeProfitPct) {
     hardReasons.push(`Gross take-profit ${takeProfitPct.toFixed(2)}% does not clear 3x estimated round-trip cost ${minCostAdjustedTakeProfitPct.toFixed(2)}%`);
@@ -229,7 +235,7 @@ function buildSignal(direction: Direction, analysis: CryptoMarketAnalysis, order
     stopLoss,
     takeProfit,
     orderQuoteQty,
-    maxHoldingMinutes: Math.max(config.maxHoldingMinutes, 180),
+    maxHoldingMinutes: Math.min(config.maxHoldingMinutes, MAX_50X_HOLDING_MINUTES),
     reasons: hardReasons.length > 0 ? [...scored.reasons, ...hardReasons] : scored.reasons
   };
 }

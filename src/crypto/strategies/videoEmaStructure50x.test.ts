@@ -75,6 +75,8 @@ describe("video EMA structure 50x strategy", () => {
 
     expect(signal.action).toBe("buy");
     expect(signal.score).toBeGreaterThanOrEqual(94);
+    expect(signal.maxHoldingMinutes).toBe(60);
+    expect(((signal.entryPrice - signal.stopLoss) / signal.entryPrice) * 100).toBeLessThanOrEqual(1.2);
     expect(signal.takeProfit - signal.entryPrice).toBeCloseTo((signal.entryPrice - signal.stopLoss) * 2, 6);
     expect(signal.reasons).toContain("Video 1h bias is long after resistance breakout");
     expect(signal.reasons).toContain("5m EMA order confirms long trend: EMA21 > EMA50 > EMA200");
@@ -132,6 +134,8 @@ describe("video EMA structure 50x strategy", () => {
 
     expect(signal.action).toBe("sell");
     expect(signal.score).toBeGreaterThanOrEqual(94);
+    expect(signal.maxHoldingMinutes).toBe(60);
+    expect(((signal.stopLoss - signal.entryPrice) / signal.entryPrice) * 100).toBeLessThanOrEqual(1.2);
     expect(signal.entryPrice - signal.takeProfit).toBeCloseTo((signal.stopLoss - signal.entryPrice) * 2, 6);
     expect(signal.reasons).toContain("Video 1h bias is short after support breakdown");
     expect(signal.reasons).toContain("5m EMA order confirms short trend: EMA21 < EMA50 < EMA200");
@@ -268,5 +272,36 @@ describe("video EMA structure 50x strategy", () => {
 
     expect(signal.action).toBe("hold");
     expect(signal.reasons).toContain("Entry candle body is not strong enough to push away from EMA21/EMA50");
+  });
+
+  it("holds when the nearest invalidation stop would be too wide for 50x", () => {
+    const signal = videoEmaStructure50xStrategy.generateSignal({
+      analysis: baseAnalysis({
+        trend: {
+          ...baseAnalysis().trend!,
+          emaFast: 99.5,
+          emaSlow: 99,
+          emaTrend: 96
+        },
+        technical: {
+          ...baseAnalysis().technical,
+          hourlyStructure: {
+            bias: "long",
+            support: 97,
+            resistance: 100.5,
+            brokenLevel: 100.5,
+            brokenLevelKind: "resistance",
+            breakoutPct: 1.5,
+            distanceFromBrokenLevelPct: 1.5,
+            rows: 24
+          }
+        }
+      }),
+      orderQuoteQty: 20,
+      config
+    });
+
+    expect(signal.action).toBe("hold");
+    expect(signal.reasons.join(" ")).toContain("stop distance");
   });
 });
