@@ -88,6 +88,41 @@ export function labelLongOutcome(rows: ParsedKline[], entryIndex: number, option
   return outcome("timeout", lastIndex, exit.close, entry.close, options.costPct, mfePct, maePct);
 }
 
+export function labelShortOutcome(rows: ParsedKline[], entryIndex: number, options: ResearchLabelOptions): ResearchOutcome {
+  const entry = rows[entryIndex];
+  if (!entry || entry.close <= 0) {
+    throw new Error(`Cannot label short outcome at missing or invalid entry index ${entryIndex}`);
+  }
+
+  const lastIndex = Math.min(rows.length - 1, entryIndex + Math.max(1, options.horizonBars));
+  if (lastIndex <= entryIndex) {
+    throw new Error(`Cannot label short outcome without future bars at entry index ${entryIndex}`);
+  }
+
+  const takeProfitPrice = entry.close * (1 - options.takeProfitPct / 100);
+  const stopLossPrice = entry.close * (1 + options.stopLossPct / 100);
+  let mfePct = Number.NEGATIVE_INFINITY;
+  let maePct = Number.POSITIVE_INFINITY;
+
+  for (let index = entryIndex + 1; index <= lastIndex; index += 1) {
+    const row = rows[index];
+    mfePct = Math.max(mfePct, ((entry.close - row.low) / entry.close) * 100);
+    maePct = Math.min(maePct, -((row.high - entry.close) / entry.close) * 100);
+
+    if (row.high >= stopLossPrice) {
+      return shortOutcome("stop_loss", index, stopLossPrice, entry.close, options.costPct, mfePct, maePct);
+    }
+    if (row.low <= takeProfitPrice) {
+      return shortOutcome("take_profit", index, takeProfitPrice, entry.close, options.costPct, mfePct, maePct);
+    }
+  }
+
+  const exit = rows[lastIndex];
+  mfePct = Number.isFinite(mfePct) ? mfePct : 0;
+  maePct = Number.isFinite(maePct) ? maePct : 0;
+  return shortOutcome("timeout", lastIndex, exit.close, entry.close, options.costPct, mfePct, maePct);
+}
+
 export function createResearchAccumulator(name: string, description?: string): ResearchAccumulator {
   return {
     name,
@@ -168,6 +203,27 @@ function outcome(
   maePct: number
 ): ResearchOutcome {
   const grossMovePct = ((exitPrice - entryPrice) / entryPrice) * 100;
+  return {
+    reason,
+    exitIndex,
+    exitPrice,
+    grossMovePct,
+    netPnlPct: grossMovePct - costPct,
+    mfePct,
+    maePct
+  };
+}
+
+function shortOutcome(
+  reason: ResearchExitReason,
+  exitIndex: number,
+  exitPrice: number,
+  entryPrice: number,
+  costPct: number,
+  mfePct: number,
+  maePct: number
+): ResearchOutcome {
+  const grossMovePct = ((entryPrice - exitPrice) / entryPrice) * 100;
   return {
     reason,
     exitIndex,

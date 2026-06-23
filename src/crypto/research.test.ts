@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { labelLongOutcome, summarizeOutcomes, type ResearchOutcome } from "./research";
+import { labelLongOutcome, labelShortOutcome, summarizeOutcomes, type ResearchOutcome } from "./research";
 import type { ParsedKline } from "./types";
 
 function row(openTime: number, open: number, high: number, low: number, close: number): ParsedKline {
@@ -25,6 +25,44 @@ describe("research outcome labelling", () => {
     expect(outcome.netPnlPct).toBeCloseTo(-0.77);
     expect(outcome.mfePct).toBeCloseTo(0.8);
     expect(outcome.maePct).toBeCloseTo(-0.7);
+  });
+
+  it("labels short outcomes with profit when price falls to take profit first", () => {
+    const rows = [
+      row(0, 100, 100, 100, 100),
+      row(300_000, 100, 100.2, 99.2, 99.4)
+    ];
+
+    const outcome = labelShortOutcome(rows, 0, {
+      horizonBars: 1,
+      takeProfitPct: 0.5,
+      stopLossPct: 0.5,
+      costPct: 0.27
+    });
+
+    expect(outcome.reason).toBe("take_profit");
+    expect(outcome.grossMovePct).toBeCloseTo(0.5);
+    expect(outcome.netPnlPct).toBeCloseTo(0.23);
+    expect(outcome.mfePct).toBeCloseTo(0.8);
+    expect(outcome.maePct).toBeCloseTo(-0.2);
+  });
+
+  it("uses a conservative stop-first assumption for shorts too", () => {
+    const rows = [
+      row(0, 100, 100, 100, 100),
+      row(300_000, 100, 100.8, 99.3, 99.8)
+    ];
+
+    const outcome = labelShortOutcome(rows, 0, {
+      horizonBars: 1,
+      takeProfitPct: 0.5,
+      stopLossPct: 0.5,
+      costPct: 0.27
+    });
+
+    expect(outcome.reason).toBe("stop_loss");
+    expect(outcome.grossMovePct).toBeCloseTo(-0.5);
+    expect(outcome.netPnlPct).toBeCloseTo(-0.77);
   });
 
   it("summarizes net edge, win rate, profit factor, and drawdown from labelled outcomes", () => {
