@@ -1,14 +1,47 @@
 import { emaVwapTrendStrategy } from "../strategy";
 import type { CryptoStrategy } from "../strategyTypes";
+import { roundTripCostPct } from "../tradeMath";
 import type { CryptoSignal } from "../types";
 import { vwapBreakdownShortStrategy } from "./vwapBreakdownShort";
+
+const SELECTOR_COST_MULTIPLE = 4;
+
+export interface OpportunitySelectorOptions {
+  minExecutableTakeProfitPct?: number;
+}
 
 function ranked(signals: CryptoSignal[]): CryptoSignal[] {
   return [...signals].sort((a, b) => b.score - a.score);
 }
 
-export function chooseBestOpportunitySignal(signals: CryptoSignal[]): CryptoSignal {
-  const executable = ranked(signals).find((signal) => signal.action === "buy" || signal.action === "sell");
+function targetPct(signal: CryptoSignal): number {
+  return signal.entryPrice > 0 ? (Math.abs(signal.takeProfit - signal.entryPrice) / signal.entryPrice) * 100 : 0;
+}
+
+function blockThinTarget(signal: CryptoSignal, minExecutableTakeProfitPct?: number): CryptoSignal {
+  if (signal.action !== "buy" && signal.action !== "sell") {
+    return signal;
+  }
+  if (minExecutableTakeProfitPct === undefined) {
+    return signal;
+  }
+  const grossTargetPct = targetPct(signal);
+  if (grossTargetPct >= minExecutableTakeProfitPct) {
+    return signal;
+  }
+  return {
+    ...signal,
+    action: "hold",
+    reasons: [
+      ...signal.reasons,
+      `Selector blocked ${signal.action}: gross target ${grossTargetPct.toFixed(2)}% does not clear ${minExecutableTakeProfitPct.toFixed(2)}% 50x friction floor`
+    ]
+  };
+}
+
+export function chooseBestOpportunitySignal(signals: CryptoSignal[], options: OpportunitySelectorOptions = {}): CryptoSignal {
+  const costFilteredSignals = signals.map((signal) => blockThinTarget(signal, options.minExecutableTakeProfitPct));
+  const executable = ranked(costFilteredSignals).find((signal) => signal.action === "buy" || signal.action === "sell");
   if (executable) {
     return {
       ...executable,
@@ -16,7 +49,7 @@ export function chooseBestOpportunitySignal(signals: CryptoSignal[]): CryptoSign
     };
   }
 
-  const strongest = ranked(signals)[0];
+  const strongest = ranked(costFilteredSignals)[0];
   if (strongest) {
     return {
       ...strongest,
@@ -40,8 +73,11 @@ export function chooseBestOpportunitySignal(signals: CryptoSignal[]): CryptoSign
 export const futuresOpportunity50xStrategy: CryptoStrategy = {
   id: "futures-opportunity-50x",
   label: "Futures 50x long-or-short opportunity selector",
-  generateSignal: (input) => chooseBestOpportunitySignal([
-    emaVwapTrendStrategy.generateSignal(input),
-    vwapBreakdownShortStrategy.generateSignal(input)
-  ])
+  generateSignal: (input) => chooseBestOpportunitySignal(
+    [
+      emaVwapTrendStrategy.generateSignal(input),
+      vwapBreakdownShortStrategy.generateSignal(input)
+    ],
+    { minExecutableTakeProfitPct: roundTripCostPct(input.config) * SELECTOR_COST_MULTIPLE }
+  )
 };

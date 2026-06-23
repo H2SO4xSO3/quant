@@ -5,6 +5,8 @@ import { clampScore, defaultTrendForAnalysis, roundTripCostPct } from "../tradeM
 const DEFAULT_ORDER_USDT = 10;
 const MIN_CANDLE_BODY_PCT = 0.18;
 const MIN_VOLUME_RATIO = 1.05;
+const MIN_RETEST_DISTANCE_PCT = 0.1;
+const MAX_RETEST_DISTANCE_PCT = 2;
 const LONG_MIN_RSI = 52;
 const LONG_MAX_RSI = 75;
 const SHORT_MIN_RSI = 25;
@@ -17,6 +19,62 @@ function emaOrderConfirms(direction: Direction, trend: CryptoTrendMetrics): bool
   return direction === "long"
     ? trend.emaFast > trend.emaSlow && trend.emaSlow > trend.emaTrend
     : trend.emaFast < trend.emaSlow && trend.emaSlow < trend.emaTrend;
+}
+
+function retestHardReason(direction: Direction, analysis: CryptoMarketAnalysis): string | undefined {
+  const structure = analysis.technical?.hourlyStructure;
+  if (!structure || structure.bias === "neutral" || !structure.brokenLevel) {
+    return undefined;
+  }
+
+  if (direction === "long" && analysis.price <= structure.brokenLevel) {
+    return "Price is not holding above the broken 1h resistance after retest";
+  }
+  if (direction === "short" && analysis.price >= structure.brokenLevel) {
+    return "Price is not holding below the broken 1h support after retest";
+  }
+
+  const distance = Math.abs(structure.distanceFromBrokenLevelPct);
+  if (distance < MIN_RETEST_DISTANCE_PCT) {
+    return `Price is only ${distance.toFixed(2)}% from the broken 1h level, not enough continuation after retest`;
+  }
+  if (distance > MAX_RETEST_DISTANCE_PCT) {
+    return `Price is ${distance.toFixed(2)}% away, too far from the broken 1h level for a fresh retest entry`;
+  }
+  return undefined;
+}
+
+function chanHardReason(direction: Direction, analysis: CryptoMarketAnalysis): string | undefined {
+  const chan = analysis.technical?.chan;
+  if (!chan) {
+    return "Chan structure is missing; skip 50x until direction is confirmed";
+  }
+  if (chan.setup === "center_chop" || chan.pricePosition === "inside_pivot") {
+    return "Chan structure is inside pivot center chop";
+  }
+  if (direction === "long") {
+    if (chan.trend !== "up") {
+      return `Chan trend ${chan.trend} does not confirm long continuation`;
+    }
+    if (chan.pricePosition === "below_pivot") {
+      return "Chan price is below pivot, not a right-side long";
+    }
+    if (chan.divergence === "bearish") {
+      return "Chan bearish divergence blocks long continuation";
+    }
+    return undefined;
+  }
+
+  if (chan.trend !== "down") {
+    return `Chan trend ${chan.trend} does not confirm short continuation`;
+  }
+  if (chan.pricePosition === "above_pivot") {
+    return "Chan price is above pivot, not a right-side short";
+  }
+  if (chan.divergence === "bullish") {
+    return "Chan bullish divergence blocks short continuation";
+  }
+  return undefined;
 }
 
 function scoreReasons(direction: Direction, analysis: CryptoMarketAnalysis, trend: CryptoTrendMetrics): { score: number; reasons: string[]; hardReasons: string[] } {
@@ -38,6 +96,22 @@ function scoreReasons(direction: Direction, analysis: CryptoMarketAnalysis, tren
     reasons.push("Video 1h bias is short after support breakdown");
   } else {
     hardReasons.push(`1h structure bias ${structure.bias} does not match ${direction}`);
+  }
+
+  const retestReason = retestHardReason(direction, analysis);
+  if (retestReason) {
+    hardReasons.push(retestReason);
+  } else if (structure?.bias === direction) {
+    score += 6;
+    reasons.push("Broken 1h level retest is close enough for fresh continuation");
+  }
+
+  const chanReason = chanHardReason(direction, analysis);
+  if (chanReason) {
+    hardReasons.push(chanReason);
+  } else {
+    score += 6;
+    reasons.push(direction === "long" ? "Chan structure confirms right-side long continuation" : "Chan structure confirms right-side short continuation");
   }
 
   if (emaOrderConfirms(direction, trend)) {

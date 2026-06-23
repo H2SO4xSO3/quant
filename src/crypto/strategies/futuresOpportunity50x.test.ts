@@ -39,4 +39,25 @@ describe("futures 50x opportunity selector", () => {
     expect(selected.reasons).toContain("No executable 50x opportunity passed current long/short gates");
     expect(selected.reasons).toContain("short blocked");
   });
+
+  it("converts an executable signal to hold when its target is too thin for selector friction", () => {
+    const selected = chooseBestOpportunitySignal(
+      [
+        signal({
+          action: "sell",
+          score: 99,
+          entryPrice: 100,
+          stopLoss: 100.2,
+          takeProfit: 99.6,
+          reasons: ["short executable"]
+        })
+      ],
+      { minExecutableTakeProfitPct: 0.8 }
+    );
+
+    expect(selected.action).toBe("hold");
+    expect(selected.score).toBe(99);
+    expect(selected.reasons.join(" ")).toContain("Selector blocked");
+    expect(selected.reasons.join(" ")).toContain("gross target 0.40%");
+  });
 });

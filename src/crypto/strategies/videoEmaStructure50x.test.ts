@@ -36,6 +36,14 @@ function baseAnalysis(overrides: Partial<CryptoMarketAnalysis> = {}): CryptoMark
       lowerWickPct: 0.04,
       upperWickPct: 0.05,
       volumeRatio: 1.35,
+      chan: {
+        trend: "up",
+        fractals: [],
+        strokes: [{ direction: "up", start: { kind: "bottom", index: 1, openTime: 1, price: 96 }, end: { kind: "top", index: 5, openTime: 5, price: 102 }, high: 102, low: 96, bars: 4, strengthPctPerBar: 1.2 }],
+        pricePosition: "above_pivot",
+        divergence: "none",
+        setup: "third_buy_candidate"
+      },
       hourlyStructure: {
         bias: "long",
         support: 93,
@@ -96,6 +104,14 @@ describe("video EMA structure 50x strategy", () => {
         lowerWickPct: 0.05,
         upperWickPct: 0.04,
         volumeRatio: 1.35,
+        chan: {
+          trend: "down",
+          fractals: [],
+          strokes: [{ direction: "down", start: { kind: "top", index: 1, openTime: 1, price: 104 }, end: { kind: "bottom", index: 5, openTime: 5, price: 98 }, high: 104, low: 98, bars: 4, strengthPctPerBar: 1.2 }],
+          pricePosition: "below_pivot",
+          divergence: "none",
+          setup: "third_sell_candidate"
+        },
         hourlyStructure: {
           bias: "short",
           support: 99.5,
@@ -119,6 +135,98 @@ describe("video EMA structure 50x strategy", () => {
     expect(signal.entryPrice - signal.takeProfit).toBeCloseTo((signal.stopLoss - signal.entryPrice) * 2, 6);
     expect(signal.reasons).toContain("Video 1h bias is short after support breakdown");
     expect(signal.reasons).toContain("5m EMA order confirms short trend: EMA21 < EMA50 < EMA200");
+  });
+
+  it("holds after a support breakdown when price is too far from the broken level to be a retest", () => {
+    const analysis = baseAnalysis({
+      price: 96,
+      trend: {
+        emaFast: 97,
+        emaSlow: 98,
+        emaTrend: 101,
+        emaFastSlopePct: -0.08,
+        higherEmaFast: 97,
+        higherEmaSlow: 100,
+        rsi: 42,
+        atr: 0.5,
+        atrPct: 0.5,
+        trend: "bearish",
+        higherTrend: "bearish"
+      },
+      technical: {
+        ...baseAnalysis().technical,
+        closePosition: 0.12,
+        hourlyStructure: {
+          bias: "short",
+          support: 100,
+          resistance: 108,
+          brokenLevel: 100,
+          brokenLevelKind: "support",
+          breakoutPct: -4,
+          distanceFromBrokenLevelPct: 4,
+          rows: 24
+        },
+        chan: {
+          trend: "down",
+          fractals: [],
+          strokes: [{ direction: "down", start: { kind: "top", index: 1, openTime: 1, price: 104 }, end: { kind: "bottom", index: 5, openTime: 5, price: 96 }, high: 104, low: 96, bars: 4, strengthPctPerBar: 1.8 }],
+          pricePosition: "below_pivot",
+          divergence: "none",
+          setup: "third_sell_candidate"
+        }
+      }
+    });
+
+    const signal = videoEmaStructure50xStrategy.generateSignal({ analysis, orderQuoteQty: 20, config });
+
+    expect(signal.action).toBe("hold");
+    expect(signal.reasons.join(" ")).toContain("too far from the broken 1h level");
+  });
+
+  it("holds a short when Chan structure still trends up", () => {
+    const analysis = baseAnalysis({
+      price: 98,
+      trend: {
+        emaFast: 99,
+        emaSlow: 101,
+        emaTrend: 104,
+        emaFastSlopePct: -0.08,
+        higherEmaFast: 98,
+        higherEmaSlow: 101,
+        rsi: 42,
+        atr: 0.5,
+        atrPct: 0.5,
+        trend: "bearish",
+        higherTrend: "bearish"
+      },
+      technical: {
+        ...baseAnalysis().technical,
+        closePosition: 0.12,
+        chan: {
+          trend: "up",
+          fractals: [],
+          strokes: [{ direction: "up", start: { kind: "bottom", index: 1, openTime: 1, price: 96 }, end: { kind: "top", index: 5, openTime: 5, price: 102 }, high: 102, low: 96, bars: 4, strengthPctPerBar: 1.2 }],
+          pricePosition: "below_pivot",
+          divergence: "none",
+          setup: "trend_follow"
+        },
+        hourlyStructure: {
+          bias: "short",
+          support: 99.5,
+          resistance: 108,
+          brokenLevel: 99.5,
+          brokenLevelKind: "support",
+          breakoutPct: -1.48,
+          distanceFromBrokenLevelPct: 1.48,
+          rows: 24
+        }
+      }
+    });
+
+    const signal = videoEmaStructure50xStrategy.generateSignal({ analysis, orderQuoteQty: 20, config });
+
+    expect(signal.action).toBe("hold");
+    expect(signal.reasons.join(" ")).toContain("Chan trend up does not confirm short continuation");
   });
 
   it("holds when 1h structure has not broken", () => {
