@@ -269,7 +269,7 @@ function syntheticVolumeProfile(rows: ParsedKline[], price: number, vwap: number
   };
 }
 
-function historicalAnalysis(
+export function historicalAnalysis(
   symbol: string,
   rows: ParsedKline[],
   higherRows: ParsedKline[],
