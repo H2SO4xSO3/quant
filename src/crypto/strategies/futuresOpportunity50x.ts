@@ -9,6 +9,7 @@ const MAJOR_50X_SYMBOLS = new Set(["BTCUSDT", "ETHUSDT", "BNBUSDT"]);
 
 export interface OpportunitySelectorOptions {
   minExecutableTakeProfitPct?: number;
+  minExitQualityTakeProfitPct?: number;
 }
 
 function ranked(signals: CryptoSignal[]): CryptoSignal[] {
@@ -40,6 +41,27 @@ function blockThinTarget(signal: CryptoSignal, minExecutableTakeProfitPct?: numb
   };
 }
 
+function blockWeakExitQuality(signal: CryptoSignal, minExitQualityTakeProfitPct?: number): CryptoSignal {
+  if (signal.action !== "buy" && signal.action !== "sell") {
+    return signal;
+  }
+  if (minExitQualityTakeProfitPct === undefined) {
+    return signal;
+  }
+  const grossTargetPct = targetPct(signal);
+  if (grossTargetPct >= minExitQualityTakeProfitPct) {
+    return signal;
+  }
+  return {
+    ...signal,
+    action: "hold",
+    reasons: [
+      ...signal.reasons,
+      `Selector blocked ${signal.action}: gross target ${grossTargetPct.toFixed(2)}% does not clear ${minExitQualityTakeProfitPct.toFixed(2)}% exit-quality floor after 50x costs and timeout risk`
+    ]
+  };
+}
+
 function blockNonMajor(signal: CryptoSignal): CryptoSignal {
   if (signal.action !== "buy" && signal.action !== "sell") {
     return signal;
@@ -55,7 +77,12 @@ function blockNonMajor(signal: CryptoSignal): CryptoSignal {
 }
 
 export function chooseBestOpportunitySignal(signals: CryptoSignal[], options: OpportunitySelectorOptions = {}): CryptoSignal {
-  const costFilteredSignals = signals.map((signal) => blockThinTarget(blockNonMajor(signal), options.minExecutableTakeProfitPct));
+  const costFilteredSignals = signals.map((signal) =>
+    blockWeakExitQuality(
+      blockThinTarget(blockNonMajor(signal), options.minExecutableTakeProfitPct),
+      options.minExitQualityTakeProfitPct
+    )
+  );
   const executable = ranked(costFilteredSignals).find((signal) => signal.action === "buy" || signal.action === "sell");
   if (executable) {
     return {
@@ -93,6 +120,9 @@ export const futuresOpportunity50xStrategy: CryptoStrategy = {
       videoEmaStructure50xStrategy.generateSignal(input),
       vwapBreakdownShortStrategy.generateSignal(input)
     ],
-    { minExecutableTakeProfitPct: roundTripCostPct(input.config) * SELECTOR_COST_MULTIPLE }
+    {
+      minExecutableTakeProfitPct: roundTripCostPct(input.config) * SELECTOR_COST_MULTIPLE,
+      minExitQualityTakeProfitPct: roundTripCostPct(input.config) * (SELECTOR_COST_MULTIPLE + 2)
+    }
   )
 };

@@ -120,6 +120,27 @@ describe("futures 50x opportunity selector", () => {
     expect(selected.reasons.join(" ")).toContain("gross target 0.40%");
   });
 
+  it("keeps raw score but blocks executable signals that do not clear the post-cost exit-quality floor", () => {
+    const selected = chooseBestOpportunitySignal(
+      [
+        signal({
+          action: "sell",
+          score: 100,
+          entryPrice: 100,
+          stopLoss: 100.4,
+          takeProfit: 99.1,
+          reasons: ["short executable"]
+        })
+      ],
+      { minExecutableTakeProfitPct: 0.8, minExitQualityTakeProfitPct: 1.2 }
+    );
+
+    expect(selected.action).toBe("hold");
+    expect(selected.score).toBe(100);
+    expect(selected.reasons.join(" ")).toContain("exit-quality floor");
+    expect(selected.reasons.join(" ")).toContain("gross target 0.90%");
+  });
+
   it("blocks non-major symbols from 50x execution", () => {
     const selected = chooseBestOpportunitySignal([
       signal({ symbol: "DOGEUSDT", action: "sell", score: 100, reasons: ["alt executable"] })

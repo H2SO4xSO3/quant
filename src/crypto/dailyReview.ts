@@ -262,7 +262,7 @@ function groupByReason(trades: DailyReviewClosedTrade[]): Record<string, DailyRe
   return Object.fromEntries(Array.from(buckets.entries()).map(([reason, rows]) => [reason, summarizeTrades(rows)]));
 }
 
-function buildFindings(sources: Record<string, DailyReviewSourceReport>, totals: DailyReviewGroup): string[] {
+function buildFindings(sources: Record<string, DailyReviewSourceReport>, totals: DailyReviewGroup, byExitReason: Record<string, DailyReviewGroup>): string[] {
   const findings: string[] = [];
   const worst = Object.values(sources).sort((a, b) => a.netPnlUsdt - b.netPnlUsdt)[0];
   if (worst) {
@@ -276,6 +276,10 @@ function buildFindings(sources: Record<string, DailyReviewSourceReport>, totals:
   }
   if (totals.stopLosses > totals.takeProfits) {
     findings.push(`Stop losses outnumber take profits: stopLosses=${totals.stopLosses}, takeProfits=${totals.takeProfits}.`);
+  }
+  const timeoutTrades = byExitReason.timeout?.closedTrades ?? 0;
+  if (totals.closedTrades > 0 && timeoutTrades / totals.closedTrades >= 0.5 && totals.grossPnlUsdt > 0 && totals.netPnlUsdt <= 0) {
+    findings.push("Timeout exits dominate recent futures paper results; treat this as exit-quality risk, not proof of take-profit edge.");
   }
   return findings.length > 0 ? findings : ["No dominant failure mode yet; keep collecting paper samples."];
 }
@@ -303,7 +307,8 @@ function buildHypotheses(totals: DailyReviewGroup, trades: DailyReviewClosedTrad
   return hypotheses;
 }
 
-function buildRiskDebate(totals: DailyReviewGroup): DailyStrategyReview["riskDebate"] {
+function buildRiskDebate(totals: DailyReviewGroup, findings: string[] = []): DailyStrategyReview["riskDebate"] {
+  const observeOnly = totals.netPnlUsdt <= 0 || findings.some((finding) => finding.includes("Timeout exits dominate"));
   return {
     aggressive: totals.grossPnlUsdt > 0
       ? "Gross PnL shows some signal; keep the unified 50x paper strategy running to collect more long/short samples."
@@ -311,7 +316,9 @@ function buildRiskDebate(totals: DailyReviewGroup): DailyStrategyReview["riskDeb
     conservative: totals.netPnlUsdt < 0
       ? "Net PnL is negative after costs and losses; do not promote any branch, and treat leverage as an experiment variable."
       : "Net PnL is non-negative, but sample size and drawdown still decide whether this is repeatable.",
-    operatorDecision: "Keep this as paper-only research. Next change must be a strategy hypothesis with before/after evidence, not a silent threshold tweak."
+    operatorDecision: observeOnly
+      ? "Keep this as paper-only observe_only research until net PnL, exit quality, and sample size improve."
+      : "Keep this as paper-only research. Next change must be a strategy hypothesis with before/after evidence, not a silent threshold tweak."
   };
 }
 
@@ -343,21 +350,23 @@ export function buildDailyStrategyReview(sourceInputs: DailyReviewSourceInput[],
   }
 
   const totals = summarizeTrades(allTrades, sourceInputs.flatMap((source) => source.entries.filter((entry) => entry.open)));
+  const byExitReason = groupByReason(allTrades);
+  const findings = buildFindings(sources, totals, byExitReason);
   return {
     generatedAt: now.toISOString(),
     windowHours,
     totals,
     sources,
-    byExitReason: groupByReason(allTrades),
+    byExitReason,
     recentClosed: allTrades.slice(0, 12).map((trade) => ({
       ...trade,
       netPnlUsdt: round(trade.netPnlUsdt),
       grossPnlUsdt: round(trade.grossPnlUsdt),
       estimatedCostsUsdt: round(trade.estimatedCostsUsdt)
     })),
-    findings: buildFindings(sources, totals),
+    findings,
     hypotheses: buildHypotheses(totals, allTrades),
-    riskDebate: buildRiskDebate(totals)
+    riskDebate: buildRiskDebate(totals, findings)
   };
 }
 

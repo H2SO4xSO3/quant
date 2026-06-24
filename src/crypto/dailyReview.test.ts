@@ -181,4 +181,53 @@ describe("daily strategy review", () => {
     expect(review.sources["futures-short-20x"].rootCauses).toContain("chan_counter_trend");
     expect(formatDailyStrategyReview(review)).toContain("chan=trend=up/setup=sell_divergence/position=above_pivot");
   });
+
+  it("marks timeout-dominated positive-gross negative-net futures results as observe-only exit-quality risk", () => {
+    const review = buildDailyStrategyReview(
+      [
+        {
+          id: "futures-opportunity-50x",
+          label: "futures opportunity 50x",
+          mode: "futures_paper",
+          initialCapitalUsdt: 100,
+          entries: [
+            futuresClose({
+              id: "timeout_close_1",
+              timestamp: "2026-06-16T02:00:00.000Z",
+              realizedPnlUsdt: -0.4,
+              notes: ["Futures paper timeout exit", "Futures short 50x", "Estimated futures costs 1.5U", "Gross futures PnL 1.1U"]
+            }),
+            futuresOpen({
+              id: "timeout_open_1",
+              timestamp: "2026-06-16T01:00:00.000Z",
+              side: "SELL",
+              direction: "short",
+              leverage: 50,
+              notes: ["Futures short 50x"]
+            }),
+            futuresClose({
+              id: "timeout_close_2",
+              timestamp: "2026-06-16T04:00:00.000Z",
+              realizedPnlUsdt: -0.2,
+              notes: ["Futures paper timeout exit", "Futures short 50x", "Estimated futures costs 1.5U", "Gross futures PnL 1.3U"]
+            }),
+            futuresOpen({
+              id: "timeout_open_2",
+              timestamp: "2026-06-16T03:00:00.000Z",
+              side: "SELL",
+              direction: "short",
+              leverage: 50,
+              notes: ["Futures short 50x"]
+            })
+          ]
+        }
+      ],
+      { now: new Date("2026-06-17T00:00:00.000Z"), windowHours: 24 }
+    );
+
+    expect(review.totals.grossPnlUsdt).toBeGreaterThan(0);
+    expect(review.totals.netPnlUsdt).toBeLessThan(0);
+    expect(review.findings.join(" ")).toContain("Timeout exits dominate");
+    expect(review.riskDebate.operatorDecision).toContain("observe_only");
+  });
 });
