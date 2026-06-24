@@ -2,6 +2,7 @@ import { BinanceClient } from "./binanceClient";
 import { loadCryptoBotConfig } from "./config";
 import { TradeEventLog } from "./eventLog";
 import { runFuturesPaperCycle, type FuturesPaperConfig } from "./futuresPaper";
+import { wrapStrategyWithFuturesSignalLabelGate } from "./futuresSignalLabelGate";
 import { CryptoJournal } from "./journal";
 import { getStrategyById } from "./strategyRegistry";
 
@@ -14,6 +15,8 @@ const config = loadCryptoBotConfig();
 const strategyId = process.env.FUTURES_PAPER_STRATEGY_ID ?? config.strategyId;
 const journalPath = process.env.FUTURES_PAPER_JOURNAL_PATH ?? "data/futures-paper-journal.json";
 const eventPath = process.env.FUTURES_PAPER_EVENTS_PATH ?? "data/futures-paper-events.json";
+const labelGateEnabled = process.env.FUTURES_LABEL_GATE_ENABLED !== "false";
+const labelGateReportPath = process.env.FUTURES_LABEL_GATE_REPORT_PATH ?? "data/futures-signal-label-research-30d.json";
 const futuresConfig: FuturesPaperConfig = {
   leverage: numberFromEnv("FUTURES_PAPER_LEVERAGE", 20),
   feeRate: numberFromEnv("FUTURES_FEE_RATE", 0.0004),
@@ -25,7 +28,14 @@ const futuresConfig: FuturesPaperConfig = {
 const broker = new BinanceClient({ baseUrl: config.baseUrl });
 const journal = new CryptoJournal(journalPath);
 const eventLog = new TradeEventLog(eventPath);
-const signalStrategy = getStrategyById(strategyId);
+const signalStrategy = wrapStrategyWithFuturesSignalLabelGate(getStrategyById(strategyId), {
+  enabled: labelGateEnabled,
+  reportPath: labelGateReportPath,
+  minTrades: numberFromEnv("FUTURES_LABEL_GATE_MIN_TRADES", 30),
+  minNetPnlPct: numberFromEnv("FUTURES_LABEL_GATE_MIN_NET_PNL_PCT", 0),
+  minProfitFactor: numberFromEnv("FUTURES_LABEL_GATE_MIN_PROFIT_FACTOR", 1),
+  maxAgeHours: numberFromEnv("FUTURES_LABEL_GATE_MAX_AGE_HOURS", 72)
+});
 
 runFuturesPaperCycle({
   broker,
