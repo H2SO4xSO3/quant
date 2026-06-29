@@ -27,7 +27,6 @@ export interface FuturesBacktestTrade {
   pnlUsdt: number;
   reason: FuturesBacktestExitReason;
   entryScore: number;
-  entryReason?: string;
 }
 
 export interface FuturesBacktestSymbolResult {
@@ -81,7 +80,6 @@ interface OpenFuturesBacktestPosition {
   takeProfit: number;
   maxHoldingMinutes: number;
   entryScore: number;
-  entryReason?: string;
 }
 
 function profitFactor(wins: number[], losses: number[]): number {
@@ -180,10 +178,6 @@ function exitFor(position: OpenFuturesBacktestPosition, current: ParsedKline, si
   return undefined;
 }
 
-function isExitOnlySignal(signal: CryptoSignal): boolean {
-  return signal.reasons.some((reason) => reason.startsWith("Exit invalidation:"));
-}
-
 function toTrade(
   symbol: string,
   position: OpenFuturesBacktestPosition,
@@ -205,7 +199,6 @@ function toTrade(
     liquidationPrice: position.liquidationPrice,
     reason,
     entryScore: position.entryScore,
-    entryReason: position.entryReason,
     ...calculatePnl(position, exitPrice, futuresConfig, reason)
   };
 }
@@ -256,7 +249,7 @@ export function backtestFuturesSymbolFromRows(options: {
       continue;
     }
 
-    if (current.openTime < nextEntryOpenTime || (signal.action !== "buy" && signal.action !== "sell") || isExitOnlySignal(signal)) {
+    if (current.openTime < nextEntryOpenTime || (signal.action !== "buy" && signal.action !== "sell")) {
       continue;
     }
 
@@ -275,8 +268,7 @@ export function backtestFuturesSymbolFromRows(options: {
       stopLoss: signal.stopLoss,
       takeProfit: signal.takeProfit,
       maxHoldingMinutes: signal.maxHoldingMinutes ?? options.strategyConfig.maxHoldingMinutes,
-      entryScore: signal.score,
-      entryReason: signal.reasons.join("; ")
+      entryScore: signal.score
     };
   }
 

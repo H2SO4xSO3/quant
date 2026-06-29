@@ -17,22 +17,7 @@ export interface BacktestTrade {
   entryQuoteQty: number;
   quantity: number;
   pnlUsdt: number;
-  pnlPct?: number;
-  holdingMinutes?: number;
   reason: "stop_loss" | "take_profit" | "trailing_stop" | "signal_exit" | "timeout" | "end";
-  exitReason?: string;
-  exitType?: "stop_loss" | "take_profit" | "trailing_stop" | "signal_exit" | "timeout" | "end" | "manual_or_unknown";
-  strategyId?: string;
-  entryReason?: string;
-  rsiAtEntry?: number;
-  priceVsVwapPctAtEntry?: number;
-  emaFastSlopeAtEntry?: number;
-  higherTrendGapPctAtEntry?: number;
-  spreadPctAtEntry?: number;
-  estimatedSlippagePct?: number;
-  btcTrendAtEntry?: string;
-  maxFavorableExcursionPct?: number;
-  maxAdverseExcursionPct?: number;
   entryScore?: number;
   entryRsi?: number;
   entryAtrPct?: number;
@@ -486,10 +471,6 @@ export async function backtestSymbol(options: {
         takeProfit: number;
         maxHoldingMinutes: number;
         entryFee: number;
-        strategyId: string;
-        entryReason: string;
-        maxHighSinceEntry: number;
-        minLowSinceEntry: number;
         diagnostics: Omit<
           BacktestTrade,
           | "symbol"
@@ -530,8 +511,6 @@ export async function backtestSymbol(options: {
     });
 
     if (position) {
-      position.maxHighSinceEntry = Math.max(position.maxHighSinceEntry, current.high);
-      position.minLowSinceEntry = Math.min(position.minLowSinceEntry, current.low);
       const profitPct = ((current.close - position.entryPrice) / position.entryPrice) * 100;
       if (profitPct >= options.strategy.breakevenTriggerPct) {
         position.stopLoss = Math.max(position.stopLoss, position.entryPrice * (1 + options.strategy.feeRate * 2));
@@ -562,27 +541,16 @@ export async function backtestSymbol(options: {
       if (reason) {
         const exitQuote = exitPrice * position.quantity;
         const exitFee = exitQuote * options.strategy.feeRate;
-        const entryQuoteQty = position.entryPrice * position.quantity;
-        const pnlUsdt = (exitPrice - position.entryPrice) * position.quantity - position.entryFee - exitFee;
-        const holdingMinutes = (current.openTime - position.entryOpenTime) / 60_000;
         trades.push({
           symbol: options.symbol,
           entryTime: position.entryTime,
           exitTime: new Date(current.openTime).toISOString(),
           entryPrice: position.entryPrice,
           exitPrice,
-          entryQuoteQty,
+          entryQuoteQty: position.entryPrice * position.quantity,
           quantity: position.quantity,
-          pnlUsdt,
-          pnlPct: entryQuoteQty > 0 ? (pnlUsdt / entryQuoteQty) * 100 : 0,
-          holdingMinutes,
+          pnlUsdt: (exitPrice - position.entryPrice) * position.quantity - position.entryFee - exitFee,
           reason,
-          exitReason: reason,
-          exitType: reason,
-          strategyId: position.strategyId,
-          entryReason: position.entryReason,
-          maxFavorableExcursionPct: ((position.maxHighSinceEntry - position.entryPrice) / position.entryPrice) * 100,
-          maxAdverseExcursionPct: ((position.minLowSinceEntry - position.entryPrice) / position.entryPrice) * 100,
           ...position.diagnostics
         });
         position = undefined;
@@ -607,30 +575,16 @@ export async function backtestSymbol(options: {
         takeProfit: signal.takeProfit,
         maxHoldingMinutes: signal.maxHoldingMinutes ?? options.strategy.maxHoldingMinutes,
         entryFee,
-        strategyId: options.signalStrategy?.id ?? emaVwapTrendStrategy.id,
-        entryReason: signal.reasons.join("; "),
-        maxHighSinceEntry: current.high,
-        minLowSinceEntry: current.low,
         diagnostics: {
           entryScore: signal.score,
           entryRsi: analysis.trend?.rsi,
-          rsiAtEntry: analysis.trend?.rsi,
           entryAtrPct: analysis.trend?.atrPct,
           entryPriceVsVwapPct: analysis.priceVsVwapPct,
-          priceVsVwapPctAtEntry: analysis.priceVsVwapPct,
           entryEmaFastSlopePct: analysis.trend?.emaFastSlopePct,
-          emaFastSlopeAtEntry: analysis.trend?.emaFastSlopePct,
           entryHigherTrendGapPct:
             analysis.trend && analysis.trend.higherEmaSlow > 0
               ? ((analysis.trend.higherEmaFast - analysis.trend.higherEmaSlow) / analysis.trend.higherEmaSlow) * 100
               : undefined,
-          higherTrendGapPctAtEntry:
-            analysis.trend && analysis.trend.higherEmaSlow > 0
-              ? ((analysis.trend.higherEmaFast - analysis.trend.higherEmaSlow) / analysis.trend.higherEmaSlow) * 100
-              : undefined,
-          spreadPctAtEntry: analysis.liquidity.nearestAskDistancePct,
-          estimatedSlippagePct: options.strategy.estimatedSlippagePct,
-          btcTrendAtEntry: options.symbol === benchmarkSymbol ? analysis.trend?.trend : analysis.marketRegime?.trend ?? "unavailable",
           entryBuySellImbalance: analysis.footprint.buySellImbalance,
           entryLargeTradeBuyRatio: analysis.deepTrades.largeTradeBuyRatio,
           entryValueAreaPosition: analysis.volumeProfile.currentPricePosition
@@ -642,26 +596,16 @@ export async function backtestSymbol(options: {
   if (position && rows5m.at(-1)) {
     const last = rows5m.at(-1)!;
     const exitQuote = last.close * position.quantity;
-    const entryQuoteQty = position.entryPrice * position.quantity;
-    const pnlUsdt = (last.close - position.entryPrice) * position.quantity - position.entryFee - exitQuote * options.strategy.feeRate;
     trades.push({
       symbol: options.symbol,
       entryTime: position.entryTime,
       exitTime: new Date(last.openTime).toISOString(),
       entryPrice: position.entryPrice,
       exitPrice: last.close,
-      entryQuoteQty,
+      entryQuoteQty: position.entryPrice * position.quantity,
       quantity: position.quantity,
-      pnlUsdt,
-      pnlPct: entryQuoteQty > 0 ? (pnlUsdt / entryQuoteQty) * 100 : 0,
-      holdingMinutes: (last.openTime - position.entryOpenTime) / 60_000,
+      pnlUsdt: (last.close - position.entryPrice) * position.quantity - position.entryFee - exitQuote * options.strategy.feeRate,
       reason: "end",
-      exitReason: "end",
-      exitType: "end",
-      strategyId: position.strategyId,
-      entryReason: position.entryReason,
-      maxFavorableExcursionPct: ((position.maxHighSinceEntry - position.entryPrice) / position.entryPrice) * 100,
-      maxAdverseExcursionPct: ((position.minLowSinceEntry - position.entryPrice) / position.entryPrice) * 100,
       ...position.diagnostics
     });
   }
@@ -738,4 +682,3 @@ export function writeBacktestReport(report: unknown, filePath = path.resolve(pro
   mkdirSync(path.dirname(filePath), { recursive: true });
   writeFileSync(filePath, `${JSON.stringify(report, null, 2)}\n`, "utf8");
 }
-

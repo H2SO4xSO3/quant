@@ -46,15 +46,7 @@
                     "test":  "vitest run",
                     "typecheck":  "tsc --noEmit",
                     "futures-paper-opportunity-50x:linux":  "NODE_USE_ENV_PROXY=1 FUTURES_PAPER_STRATEGY_ID=futures-opportunity-50x FUTURES_PAPER_LEVERAGE=50 FUTURES_PAPER_MARGIN_USDT=20 FUTURES_PAPER_MAX_OPEN_POSITIONS=5 FUTURES_PAPER_JOURNAL_PATH=data/futures-opportunity-50x-journal.json FUTURES_PAPER_EVENTS_PATH=data/futures-opportunity-50x-events.json MIN_EXPECTED_VALUE_PCT=0.15 TAKE_PROFIT_R=2 tsx src/crypto/runFuturesPaperOnce.ts",
-                    "futures-paper-video-ema-structure-50x:linux":  "NODE_USE_ENV_PROXY=1 FUTURES_PAPER_STRATEGY_ID=video-ema-structure-50x FUTURES_PAPER_LEVERAGE=50 FUTURES_PAPER_MARGIN_USDT=20 FUTURES_PAPER_MAX_OPEN_POSITIONS=5 FUTURES_PAPER_JOURNAL_PATH=data/video-ema-structure-50x-journal.json FUTURES_PAPER_EVENTS_PATH=data/video-ema-structure-50x-events.json EMA_FAST_PERIOD=21 EMA_SLOW_PERIOD=50 EMA_TREND_PERIOD=200 HIGHER_EMA_FAST_PERIOD=21 HIGHER_EMA_SLOW_PERIOD=50 MIN_EXPECTED_VALUE_PCT=0.15 TAKE_PROFIT_R=2 tsx src/crypto/runFuturesPaperOnce.ts",
-                    "backtest:14":  "npm run backtest -- 14",
-                    "backtest:30":  "npm run backtest -- 30",
-                    "backtest:60":  "npm run backtest -- 60",
-                    "backtest:90":  "npm run backtest -- 90",
-                    "trade-attribution":  "tsx src/crypto/runTradeAttribution.ts",
-                    "backtest:ablation":  "tsx src/crypto/runBacktestAblation.ts",
-                    "bitget-volume-research":  "tsx src/crypto/runBitgetVolumeResearch.ts",
-                    "bitget-volume-collect":  "tsx src/crypto/runBitgetVolumeCollector.ts"
+                    "futures-paper-video-ema-structure-50x:linux":  "NODE_USE_ENV_PROXY=1 FUTURES_PAPER_STRATEGY_ID=video-ema-structure-50x FUTURES_PAPER_LEVERAGE=50 FUTURES_PAPER_MARGIN_USDT=20 FUTURES_PAPER_MAX_OPEN_POSITIONS=5 FUTURES_PAPER_JOURNAL_PATH=data/video-ema-structure-50x-journal.json FUTURES_PAPER_EVENTS_PATH=data/video-ema-structure-50x-events.json EMA_FAST_PERIOD=21 EMA_SLOW_PERIOD=50 EMA_TREND_PERIOD=200 HIGHER_EMA_FAST_PERIOD=21 HIGHER_EMA_SLOW_PERIOD=50 MIN_EXPECTED_VALUE_PCT=0.15 TAKE_PROFIT_R=2 tsx src/crypto/runFuturesPaperOnce.ts"
                 },
     "dependencies":  {
                          "express":  "^5.2.1"
