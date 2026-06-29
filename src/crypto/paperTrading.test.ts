@@ -360,4 +360,58 @@ describe("paper trading", () => {
       rmSync(directory, { recursive: true, force: true });
     }
   });
+  it("records structured diagnostics on paper entry and exit rows", async () => {
+    const { directory, journal, eventLog } = tempHarness();
+    try {
+      await runPaperCycle({
+        broker: broker(100),
+        journal,
+        eventLog,
+        symbols: ["BTCUSDT"],
+        strategyConfig: { ...DEFAULT_STRATEGY_CONFIG, minBuyScore: 80 },
+        signalStrategy: buyStrategy,
+        initialCapitalUsdt: 100,
+        orderQuoteQty: 20,
+        maxOpenPositions: 5
+      });
+
+      const entry = journal.read().entries[0];
+      expect(entry.strategyId).toBe("paper-buy");
+      expect(entry.entryTime).toBe(entry.timestamp);
+      expect(entry.entryReason).toContain("paper test buy");
+      expect(entry.rsiAtEntry).toBeTypeOf("number");
+      expect(entry.priceVsVwapPctAtEntry).toBeTypeOf("number");
+      expect(entry.emaFastSlopeAtEntry).toBeTypeOf("number");
+      expect(entry.higherTrendGapPctAtEntry).toBeTypeOf("number");
+      expect(entry.spreadPctAtEntry).toBeTypeOf("number");
+      expect(entry.estimatedSlippagePct).toBe(DEFAULT_STRATEGY_CONFIG.estimatedSlippagePct);
+      expect(entry.btcTrendAtEntry).toBe("unavailable");
+
+      const result = await runPaperCycle({
+        broker: broker(101),
+        journal,
+        eventLog,
+        symbols: ["BTCUSDT"],
+        strategyConfig: { ...DEFAULT_STRATEGY_CONFIG, minBuyScore: 80, signalExitScore: 20 },
+        signalStrategy: exitStrategy,
+        initialCapitalUsdt: 100,
+        orderQuoteQty: 20,
+        maxOpenPositions: 5
+      });
+
+      const exit = result.closed[0];
+      expect(exit.strategyId).toBe("paper-buy");
+      expect(exit.entryTime).toBe(entry.timestamp);
+      expect(exit.exitTime).toBe(exit.timestamp);
+      expect(exit.exitReason).toBe("signal_exit");
+      expect(exit.exitType).toBe("signal_exit");
+      expect(exit.pnlPct).toBeTypeOf("number");
+      expect(exit.holdingMinutes).toBeGreaterThanOrEqual(0);
+      expect(exit.maxFavorableExcursionPct).toBeGreaterThan(0);
+      expect(exit.maxAdverseExcursionPct).toBeLessThanOrEqual(0);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
 });
+

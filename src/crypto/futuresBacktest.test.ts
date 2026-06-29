@@ -102,6 +102,55 @@ describe("futures backtest", () => {
     expect(result.trades[0].pnlUsdt).toBeCloseTo(8.504, 6);
   });
 
+  it("records the entry reasons for futures attribution", () => {
+    const result = backtestFuturesSymbolFromRows({
+      symbol: "ETHUSDT",
+      raw5m: rowsWithExit({ high: 100.2, low: 98, close: 99 }),
+      raw15m: rowsWithExit({ high: 100.2, low: 98, close: 99 }),
+      marginUsdt: 20,
+      strategyConfig: { ...DEFAULT_STRATEGY_CONFIG, signalExitScore: -1 },
+      futuresConfig,
+      signalStrategy: strategy({ action: "sell", stopLoss: 101, takeProfit: 99, reasons: ["fresh short entry", "branch=short"] })
+    });
+
+    expect(result.trades[0].entryReason).toContain("fresh short entry");
+    expect(result.trades[0].entryReason).toContain("branch=short");
+  });
+
+  it("does not open a fresh short from an exit-invalidation sell signal", () => {
+    const result = backtestFuturesSymbolFromRows({
+      symbol: "ETHUSDT",
+      raw5m: rowsWithExit({ high: 100.2, low: 98, close: 99 }),
+      raw15m: rowsWithExit({ high: 100.2, low: 98, close: 99 }),
+      marginUsdt: 20,
+      strategyConfig: { ...DEFAULT_STRATEGY_CONFIG, signalExitScore: -1 },
+      futuresConfig,
+      signalStrategy: strategy({
+        action: "sell",
+        stopLoss: 101,
+        takeProfit: 99,
+        reasons: ["Exit invalidation: high-sell branch is for closing longs"]
+      })
+    });
+
+    expect(result.trades).toHaveLength(0);
+  });
+
+  it("still opens normal fresh shorts when the strategy emits a sell entry", () => {
+    const result = backtestFuturesSymbolFromRows({
+      symbol: "ETHUSDT",
+      raw5m: rowsWithExit({ high: 100.2, low: 98, close: 99 }),
+      raw15m: rowsWithExit({ high: 100.2, low: 98, close: 99 }),
+      marginUsdt: 20,
+      strategyConfig: { ...DEFAULT_STRATEGY_CONFIG, signalExitScore: -1 },
+      futuresConfig,
+      signalStrategy: strategy({ action: "sell", stopLoss: 101, takeProfit: 99, reasons: ["fresh short entry"] })
+    });
+
+    expect(result.trades).toHaveLength(1);
+    expect(result.trades[0].direction).toBe("short");
+  });
+
   it("caps liquidation loss at the position margin", () => {
     const result = backtestFuturesSymbolFromRows({
       symbol: "SOLUSDT",

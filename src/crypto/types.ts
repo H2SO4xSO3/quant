@@ -305,6 +305,26 @@ export interface CryptoJournalEntry {
   timestamp: string;
   mode?: CryptoExecutionMode;
   notes?: string[];
+  entryTime?: string;
+  exitTime?: string;
+  entryPrice?: number;
+  exitPrice?: number;
+  pnlPct?: number;
+  pnlUsdt?: number;
+  holdingMinutes?: number;
+  entryReason?: string;
+  exitReason?: string;
+  strategyId?: string;
+  rsiAtEntry?: number;
+  priceVsVwapPctAtEntry?: number;
+  emaFastSlopeAtEntry?: number;
+  higherTrendGapPctAtEntry?: number;
+  spreadPctAtEntry?: number;
+  estimatedSlippagePct?: number;
+  btcTrendAtEntry?: string;
+  maxFavorableExcursionPct?: number;
+  maxAdverseExcursionPct?: number;
+  exitType?: "stop_loss" | "take_profit" | "trailing_stop" | "timeout" | "signal_exit" | "manual_or_unknown" | "end";
 }
 
 export interface CryptoRiskDecision {
@@ -335,3 +355,4 @@ export interface ParsedKline {
   volume: number;
   quoteVolume: number;
 }
+
