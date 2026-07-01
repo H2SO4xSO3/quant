@@ -5,6 +5,7 @@ import type { TradeEventLog } from "./eventLog";
 import type { CryptoJournal } from "./journal";
 import { DEFAULT_STRATEGY_CONFIG } from "./strategy";
 import { emaVwapTrendStrategy } from "./strategy";
+import { trendGapPct } from "./tradeMath";
 import type { CryptoStrategy } from "./strategyTypes";
 import type { CryptoJournalEntry, CryptoMarketAnalysis, CryptoSignal, CryptoStrategyConfig } from "./types";
 
@@ -38,6 +39,73 @@ export interface PaperAccountSummary {
   returnPct: number;
 }
 
+
+function entryDiagnostics(input: {
+  signal: CryptoSignal;
+  analysis: CryptoMarketAnalysis;
+  strategyId: string;
+  config: CryptoStrategyConfig;
+  timestamp: string;
+}): Partial<CryptoJournalEntry> {
+  return {
+    entryTime: input.timestamp,
+    entryPrice: input.signal.entryPrice,
+    strategyId: input.strategyId,
+    entryReason: input.signal.reasons.join("; "),
+    rsiAtEntry: input.analysis.trend?.rsi,
+    priceVsVwapPctAtEntry: input.analysis.priceVsVwapPct,
+    emaFastSlopeAtEntry: input.analysis.trend?.emaFastSlopePct,
+    higherTrendGapPctAtEntry: input.analysis.trend ? trendGapPct(input.analysis.trend) : undefined,
+    spreadPctAtEntry: input.analysis.liquidity.nearestAskDistancePct,
+    estimatedSlippagePct: input.config.estimatedSlippagePct,
+    btcTrendAtEntry: input.analysis.marketRegime?.trend ?? "unavailable",
+    maxFavorableExcursionPct: 0,
+    maxAdverseExcursionPct: 0
+  };
+}
+
+function excursionDiagnostics(entry: CryptoJournalEntry, price: number): Pick<CryptoJournalEntry, "maxFavorableExcursionPct" | "maxAdverseExcursionPct"> {
+  const entryPrice = entry.entryPrice ?? entry.price ?? price;
+  const movePct = entryPrice > 0 ? ((price - entryPrice) / entryPrice) * 100 : 0;
+  return {
+    maxFavorableExcursionPct: Math.max(entry.maxFavorableExcursionPct ?? 0, movePct),
+    maxAdverseExcursionPct: Math.min(entry.maxAdverseExcursionPct ?? 0, movePct)
+  };
+}
+
+function exitDiagnostics(input: {
+  entry: CryptoJournalEntry;
+  exitPrice: number;
+  exitQuote: number;
+  realizedPnlUsdt: number;
+  reason: NonNullable<CryptoJournalEntry["exitType"]>;
+  timestamp: string;
+}): Partial<CryptoJournalEntry> {
+  const entryTimeMs = Date.parse(input.entry.entryTime ?? input.entry.timestamp);
+  const exitTimeMs = Date.parse(input.timestamp);
+  const entryQuote = input.entry.quoteQty ?? 0;
+  return {
+    entryTime: input.entry.entryTime ?? input.entry.timestamp,
+    entryPrice: input.entry.entryPrice ?? input.entry.price,
+    exitTime: input.timestamp,
+    exitPrice: input.exitPrice,
+    pnlUsdt: input.realizedPnlUsdt,
+    pnlPct: entryQuote > 0 ? (input.realizedPnlUsdt / entryQuote) * 100 : 0,
+    holdingMinutes: Number.isFinite(entryTimeMs) && Number.isFinite(exitTimeMs) ? (exitTimeMs - entryTimeMs) / 60_000 : undefined,
+    entryReason: input.entry.entryReason ?? input.entry.notes?.join("; "),
+    exitReason: input.reason,
+    exitType: input.reason,
+    strategyId: input.entry.strategyId,
+    rsiAtEntry: input.entry.rsiAtEntry,
+    priceVsVwapPctAtEntry: input.entry.priceVsVwapPctAtEntry,
+    emaFastSlopeAtEntry: input.entry.emaFastSlopeAtEntry,
+    higherTrendGapPctAtEntry: input.entry.higherTrendGapPctAtEntry,
+    spreadPctAtEntry: input.entry.spreadPctAtEntry,
+    estimatedSlippagePct: input.entry.estimatedSlippagePct,
+    btcTrendAtEntry: input.entry.btcTrendAtEntry,
+    ...excursionDiagnostics(input.entry, input.exitPrice)
+  };
+}
 function paperEntries(journal: CryptoJournal): CryptoJournalEntry[] {
   return journal.read().entries.filter((entry) => entry.mode === "paper");
 }
@@ -134,6 +202,11 @@ export async function runPaperCycle(options: PaperCycleOptions): Promise<PaperCy
     if (existing) {
       const currentPrice = await options.broker.fetchTickerPrice(symbol);
       const reason = closeReason(existing, signal, currentPrice, strategyConfig);
+      if (existing.id) {
+        const excursions = excursionDiagnostics(existing, currentPrice);
+        options.journal.update(existing.id, (entry) => ({ ...entry, ...excursions }));
+        Object.assign(existing, excursions);
+      }
       if (reason && existing.id) {
         const quantity = existing.quantity ?? 0;
         const entryPrice = existing.price ?? currentPrice;
@@ -142,7 +215,8 @@ export async function runPaperCycle(options: PaperCycleOptions): Promise<PaperCy
         const grossPnlUsdt = (currentPrice - entryPrice) * quantity;
         const estimatedCostUsdt = estimateRoundTripCostUsdt(entryQuote, exitQuote, strategyConfig);
         const realizedPnlUsdt = grossPnlUsdt - estimatedCostUsdt;
-        options.journal.update(existing.id, (entry) => ({ ...entry, open: false, realizedPnlUsdt }));
+        const diagnostics = exitDiagnostics({ entry: existing, exitPrice: currentPrice, exitQuote, realizedPnlUsdt, reason, timestamp });
+        options.journal.update(existing.id, (entry) => ({ ...entry, ...diagnostics, open: false, realizedPnlUsdt }));
         const sell = options.journal.append({
           symbol,
           side: "SELL",
@@ -153,7 +227,8 @@ export async function runPaperCycle(options: PaperCycleOptions): Promise<PaperCy
           open: false,
           timestamp,
           mode: "paper",
-          notes: [`Paper ${reason} exit`, `Estimated paper costs ${estimatedCostUsdt.toFixed(6)}U`, ...signal.reasons]
+          notes: [`Paper ${reason} exit`, `Estimated paper costs ${estimatedCostUsdt.toFixed(6)}U`, ...signal.reasons],
+          ...diagnostics
         });
         closed.push(sell);
         options.eventLog?.append({
@@ -216,7 +291,14 @@ export async function runPaperCycle(options: PaperCycleOptions): Promise<PaperCy
       open: true,
       timestamp,
       mode: "paper",
-      notes: withChanEntryNote(signal, analysis)
+      notes: withChanEntryNote(signal, analysis),
+      ...entryDiagnostics({
+        signal,
+        analysis,
+        strategyId: signalStrategy.id,
+        config: strategyConfig,
+        timestamp
+      })
     });
     opened.push(buy);
     options.eventLog?.append({
@@ -239,3 +321,5 @@ export async function runPaperCycle(options: PaperCycleOptions): Promise<PaperCy
     account: summarizePaperAccount(options.journal, options.initialCapitalUsdt)
   };
 }
+
+

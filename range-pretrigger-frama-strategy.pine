@@ -1,0 +1,230 @@
+//@version=6
+// This script combines ideas from the public Range Filter script and
+// FRAMA Channel [BigBeluga] logic. Use for research/backtesting only.
+strategy("H2SO4 Range PreTrigger + FRAMA Exit", overlay=true, initial_capital=100, currency=currency.USD,
+     default_qty_type=strategy.percent_of_equity, default_qty_value=100, pyramiding=0,
+     commission_type=strategy.commission.percent, commission_value=0.06,
+     margin_long=4, margin_short=4, calc_on_order_fills=true, process_orders_on_close=false)
+
+// Inputs
+src = input.source(close, "Source", group="Range Filter")
+per = input.int(100, minval=1, title="Sampling Period", group="Range Filter")
+mult = input.float(3.0, minval=0.1, title="Range Multiplier", group="Range Filter")
+
+framaLenInput = input.int(26, title="FRAMA Length", minval=2, step=2, group="FRAMA Channel")
+bandsDistance = input.float(1.5, "Bands Distance", step=0.01, minval=0.3, group="FRAMA Channel")
+
+stopTrigger = input.string("Close", "Stop Trigger", options=["Close", "Wick"], group="Execution")
+showOriginalLabels = input.bool(true, "Show Original Range Labels", group="Display")
+showTradeLevels = input.bool(true, "Show Trade TP/SL Lines", group="Display")
+
+// Range Filter
+smoothrng(x, t, m) =>
+    wper = t * 2 - 1
+    avrng = ta.ema(math.abs(x - x[1]), t)
+    ta.ema(avrng, wper) * m
+
+rngfilt(x, r) =>
+    rf = x
+    rf := x > nz(rf[1]) ? x - r < nz(rf[1]) ? nz(rf[1]) : x - r :
+         x + r > nz(rf[1]) ? nz(rf[1]) : x + r
+    rf
+
+smrng = smoothrng(src, per, mult)
+filt = rngfilt(src, smrng)
+
+var float upward = 0.0
+var float downward = 0.0
+upward := filt > filt[1] ? nz(upward[1]) + 1 : filt < filt[1] ? 0 : nz(upward[1])
+downward := filt < filt[1] ? nz(downward[1]) + 1 : filt > filt[1] ? 0 : nz(downward[1])
+
+hband = filt + smrng
+lband = filt - smrng
+
+longCond = src > filt and upward > 0 and (src > src[1] or src < src[1])
+shortCond = src < filt and downward > 0 and (src < src[1] or src > src[1])
+
+var int condIni = 0
+prevCond = nz(condIni[1], 0)
+condIni := longCond ? 1 : shortCond ? -1 : prevCond
+rangeBuy = longCond and prevCond == -1
+rangeSell = shortCond and prevCond == 1
+
+// FRAMA Channel
+framaLen = math.max(2, framaLenInput)
+halfLen = int(framaLen / 2)
+price = hl2
+volatility = ta.sma(high - low, 200)
+
+n3 = (ta.highest(high, framaLen) - ta.lowest(low, framaLen)) / framaLen
+
+float hh1 = high
+float ll1 = low
+for count = 0 to halfLen - 1
+    hh1 := high[count] > hh1 ? high[count] : hh1
+    ll1 := low[count] < ll1 ? low[count] : ll1
+n1 = (hh1 - ll1) / halfLen
+
+float hh2 = high[halfLen]
+float ll2 = low[halfLen]
+for count = halfLen to framaLen - 1
+    hh2 := high[count] > hh2 ? high[count] : hh2
+    ll2 := low[count] < ll2 ? low[count] : ll2
+n2 = (hh2 - ll2) / halfLen
+
+float dimen = na
+dimen := n1 > 0 and n2 > 0 and n3 > 0 ? (math.log(n1 + n2) - math.log(n3)) / math.log(2) : nz(dimen[1], 1)
+alphaRaw = math.exp(-4.6 * (dimen - 1))
+alpha = math.max(math.min(alphaRaw, 1), 0.01)
+
+var float framaRaw = na
+framaRaw := na(framaRaw[1]) ? price : alpha * price + (1 - alpha) * framaRaw[1]
+frama = ta.sma(bar_index < framaLen + 1 ? price : framaRaw, 5)
+framaUpper = frama + volatility * bandsDistance
+framaLower = frama - volatility * bandsDistance
+
+breakUp = ta.crossover(hlc3, framaUpper) and barstate.isconfirmed
+breakDn = ta.crossunder(hlc3, framaLower) and barstate.isconfirmed
+
+var color candleState = color.gray
+if ta.cross(close, frama)
+    candleState := color.rgb(162, 181, 202)
+if breakUp
+    candleState := color.rgb(39, 226, 123)
+if breakDn
+    candleState := color.rgb(39, 114, 226)
+barcolor(candleState)
+
+// Helpers
+maxNotNa(a, b) =>
+    na(a) ? b : na(b) ? a : math.max(a, b)
+
+minNotNa(a, b) =>
+    na(a) ? b : na(b) ? a : math.min(a, b)
+
+lineBelow(reference, a, b, fallback) =>
+    aa = not na(a) and a < reference ? a : na
+    bb = not na(b) and b < reference ? b : na
+    c = maxNotNa(aa, bb)
+    na(c) ? fallback : c
+
+lineAbove(reference, a, b, fallback) =>
+    aa = not na(a) and a > reference ? a : na
+    bb = not na(b) and b > reference ? b : na
+    c = minNotNa(aa, bb)
+    na(c) ? fallback : c
+
+longTakeProfit(entryPrice, rangeFilter, rangeHighBand, framaOuter) =>
+    rangeWidth = math.max(0.0, rangeHighBand - rangeFilter)
+    rangeTarget = entryPrice + rangeWidth
+    not na(framaOuter) and framaOuter > rangeTarget ? framaOuter : rangeTarget
+
+shortTakeProfit(entryPrice, rangeFilter, rangeLowBand, framaOuter) =>
+    rangeWidth = math.max(0.0, rangeFilter - rangeLowBand)
+    rangeTarget = entryPrice - rangeWidth
+    not na(framaOuter) and framaOuter < rangeTarget ? framaOuter : rangeTarget
+
+// Pre-trigger execution state
+var int triggerState = 0
+var float longStop = na
+var float longTp = na
+var float shortStop = na
+var float shortTp = na
+
+justLong = strategy.position_size > 0 and strategy.position_size[1] <= 0
+justShort = strategy.position_size < 0 and strategy.position_size[1] >= 0
+flat = strategy.position_size == 0
+
+if justLong
+    triggerState := 1
+    entry = strategy.position_avg_price
+    longStop := lineBelow(entry, filt[1], frama[1], lband[1])
+    longTp := longTakeProfit(entry, filt[1], hband[1], framaUpper[1])
+    shortStop := na
+    shortTp := na
+
+if justShort
+    triggerState := -1
+    entry = strategy.position_avg_price
+    shortStop := lineAbove(entry, filt[1], frama[1], hband[1])
+    shortTp := shortTakeProfit(entry, filt[1], lband[1], framaLower[1])
+    longStop := na
+    longTp := na
+
+if strategy.position_size > 0
+    candidate = lineBelow(close, filt, frama, longStop)
+    longStop := math.max(longStop, candidate)
+    if stopTrigger == "Wick"
+        strategy.exit("L-Exit", from_entry="L-Pre", stop=longStop, limit=longTp)
+    else
+        strategy.exit("L-TP", from_entry="L-Pre", limit=longTp)
+        if close <= longStop and barstate.isconfirmed
+            strategy.close("L-Pre", comment="Close Stop")
+
+if strategy.position_size < 0
+    candidate = lineAbove(close, filt, frama, shortStop)
+    shortStop := math.min(shortStop, candidate)
+    if stopTrigger == "Wick"
+        strategy.exit("S-Exit", from_entry="S-Pre", stop=shortStop, limit=shortTp)
+    else
+        strategy.exit("S-TP", from_entry="S-Pre", limit=shortTp)
+        if close >= shortStop and barstate.isconfirmed
+            strategy.close("S-Pre", comment="Close Stop")
+
+if flat
+    strategy.cancel("L-Exit")
+    strategy.cancel("L-TP")
+    strategy.cancel("S-Exit")
+    strategy.cancel("S-TP")
+    longStop := na
+    longTp := na
+    shortStop := na
+    shortTp := na
+
+    canLong = triggerState != 1 and not na(hband[1])
+    canShort = triggerState != -1 and not na(lband[1])
+
+    if canLong
+        strategy.entry("L-Pre", strategy.long, stop=hband[1], oca_name="pretrigger", oca_type=strategy.oca.cancel, comment="Pre Buy")
+    else
+        strategy.cancel("L-Pre")
+
+    if canShort
+        strategy.entry("S-Pre", strategy.short, stop=lband[1], oca_name="pretrigger", oca_type=strategy.oca.cancel, comment="Pre Sell")
+    else
+        strategy.cancel("S-Pre")
+else
+    strategy.cancel("L-Pre")
+    strategy.cancel("S-Pre")
+
+// Plots
+rangeColor = upward > 0 ? color.white : downward > 0 ? color.blue : color.rgb(144, 191, 249)
+pf = plot(filt, "Range Filter", color=rangeColor, linewidth=2)
+ph = plot(hband, "Range High Target", color=color.new(color.white, 70))
+pl = plot(lband, "Range Low Target", color=color.new(color.blue, 70))
+fill(ph, pf, color=color.new(color.white, 92), title="High Target Range")
+fill(pl, pf, color=color.new(color.blue, 92), title="Low Target Range")
+
+pFrama = plot(frama, "FRAMA", color=color.new(candleState, 45), linewidth=2)
+pFu = plot(framaUpper, "FRAMA Upper", color=color.new(candleState, 20))
+pFl = plot(framaLower, "FRAMA Lower", color=color.new(candleState, 20))
+fill(pFu, pFrama, color=color.new(candleState, 92))
+fill(pFrama, pFl, color=color.new(candleState, 92))
+
+plot(showTradeLevels and strategy.position_size > 0 ? longStop : na, "Long Stop", color=color.red, style=plot.style_linebr, linewidth=2)
+plot(showTradeLevels and strategy.position_size > 0 ? longTp : na, "Long TP", color=color.lime, style=plot.style_linebr, linewidth=2)
+plot(showTradeLevels and strategy.position_size < 0 ? shortStop : na, "Short Stop", color=color.red, style=plot.style_linebr, linewidth=2)
+plot(showTradeLevels and strategy.position_size < 0 ? shortTp : na, "Short TP", color=color.lime, style=plot.style_linebr, linewidth=2)
+
+plotshape(showOriginalLabels and rangeBuy, title="Original Buy", text="Buy", textcolor=color.white,
+     style=shape.labelup, size=size.tiny, location=location.belowbar, color=color.new(color.gray, 20))
+plotshape(showOriginalLabels and rangeSell, title="Original Sell", text="Sell", textcolor=color.white,
+     style=shape.labeldown, size=size.tiny, location=location.abovebar, color=color.new(color.blue, 20))
+
+plotshape(justLong, title="PreTrigger Long", text="Pre Buy", textcolor=color.black,
+     style=shape.triangleup, size=size.small, location=location.belowbar, color=color.lime)
+plotshape(justShort, title="PreTrigger Short", text="Pre Sell", textcolor=color.white,
+     style=shape.triangledown, size=size.small, location=location.abovebar, color=color.red)
+
+alertcondition(justLong, title="Range PreTrigger Buy", message="Range PreTrigger Buy")
+alertcondition(justShort, title="Range PreTrigger Sell", message="Range PreTrigger Sell")

@@ -1,0 +1,157 @@
+//@version=6
+indicator("H2SO4 Range Clean Labels", overlay=true, max_labels_count=500)
+
+// Range Filter inputs
+src = input.source(close, "Source", group="Range Filter")
+per = input.int(100, minval=1, title="Sampling Period", group="Range Filter")
+mult = input.float(3.0, minval=0.1, title="Range Multiplier", group="Range Filter")
+
+// FRAMA inputs, used only for TP/SL tooltip references.
+framaLenInput = input.int(26, title="FRAMA Length", minval=2, step=2, group="FRAMA Channel")
+bandsDistance = input.float(1.5, "Bands Distance", step=0.01, minval=0.3, group="FRAMA Channel")
+
+showLivePreview = input.bool(true, "Show Live Preview Signal", group="Display")
+
+// Range Filter
+smoothrng(x, t, m) =>
+    wper = t * 2 - 1
+    avrng = ta.ema(math.abs(x - x[1]), t)
+    ta.ema(avrng, wper) * m
+
+rngfilt(x, r) =>
+    rf = x
+    rf := x > nz(rf[1]) ? x - r < nz(rf[1]) ? nz(rf[1]) : x - r :
+         x + r > nz(rf[1]) ? nz(rf[1]) : x + r
+    rf
+
+smrng = smoothrng(src, per, mult)
+filt = rngfilt(src, smrng)
+hband = filt + smrng
+lband = filt - smrng
+
+var float upward = 0.0
+var float downward = 0.0
+upward := filt > filt[1] ? nz(upward[1]) + 1 : filt < filt[1] ? 0 : nz(upward[1])
+downward := filt < filt[1] ? nz(downward[1]) + 1 : filt > filt[1] ? 0 : nz(downward[1])
+
+longCond = src > filt and upward > 0 and src != src[1]
+shortCond = src < filt and downward > 0 and src != src[1]
+
+var int condIni = 0
+prevCond = nz(condIni[1], 0)
+condIni := longCond ? 1 : shortCond ? -1 : prevCond
+rangeBuy = longCond and prevCond == -1
+rangeSell = shortCond and prevCond == 1
+
+// FRAMA Channel calculation
+framaLen = math.max(2, framaLenInput)
+halfLen = int(framaLen / 2)
+price = hl2
+volatility = ta.sma(high - low, 200)
+
+n3 = (ta.highest(high, framaLen) - ta.lowest(low, framaLen)) / framaLen
+
+float hh1 = high
+float ll1 = low
+for count = 0 to halfLen - 1
+    hh1 := high[count] > hh1 ? high[count] : hh1
+    ll1 := low[count] < ll1 ? low[count] : ll1
+n1 = (hh1 - ll1) / halfLen
+
+float hh2 = high[halfLen]
+float ll2 = low[halfLen]
+for count = halfLen to framaLen - 1
+    hh2 := high[count] > hh2 ? high[count] : hh2
+    ll2 := low[count] < ll2 ? low[count] : ll2
+n2 = (hh2 - ll2) / halfLen
+
+float dimen = na
+dimen := n1 > 0 and n2 > 0 and n3 > 0 ? (math.log(n1 + n2) - math.log(n3)) / math.log(2) : nz(dimen[1], 1)
+alphaRaw = math.exp(-4.6 * (dimen - 1))
+alpha = math.max(math.min(alphaRaw, 1), 0.01)
+
+var float framaRaw = na
+framaRaw := na(framaRaw[1]) ? price : alpha * price + (1 - alpha) * framaRaw[1]
+frama = ta.sma(bar_index < framaLen + 1 ? price : framaRaw, 5)
+framaUpper = frama + volatility * bandsDistance
+framaLower = frama - volatility * bandsDistance
+
+// TP/SL helpers
+maxNotNa(a, b) =>
+    na(a) ? b : na(b) ? a : math.max(a, b)
+
+minNotNa(a, b) =>
+    na(a) ? b : na(b) ? a : math.min(a, b)
+
+lineBelow(reference, a, b, fallback) =>
+    aa = not na(a) and a < reference ? a : na
+    bb = not na(b) and b < reference ? b : na
+    c = maxNotNa(aa, bb)
+    na(c) ? fallback : c
+
+lineAbove(reference, a, b, fallback) =>
+    aa = not na(a) and a > reference ? a : na
+    bb = not na(b) and b > reference ? b : na
+    c = minNotNa(aa, bb)
+    na(c) ? fallback : c
+
+longTakeProfit(entryPrice, rangeFilter, rangeHighBand, framaOuter) =>
+    rangeWidth = math.max(0.0, rangeHighBand - rangeFilter)
+    rangeTarget = entryPrice + rangeWidth
+    not na(framaOuter) and framaOuter > rangeTarget ? framaOuter : rangeTarget
+
+shortTakeProfit(entryPrice, rangeFilter, rangeLowBand, framaOuter) =>
+    rangeWidth = math.max(0.0, rangeFilter - rangeLowBand)
+    rangeTarget = entryPrice - rangeWidth
+    not na(framaOuter) and framaOuter < rangeTarget ? framaOuter : rangeTarget
+
+fmt(v) =>
+    str.tostring(v, format.mintick)
+
+buyTip(entryPrice, preview) =>
+    sl = lineBelow(entryPrice, filt, frama, lband)
+    tp = longTakeProfit(entryPrice, filt, hband, framaUpper)
+    status = preview ? "Live preview: disappears if the candle fails to confirm" : "Confirmed Range signal"
+    "Buy\n" + status + "\nEntry: " + fmt(entryPrice) + "\nTP: " + fmt(tp) + "\nSL: " + fmt(sl)
+
+sellTip(entryPrice, preview) =>
+    sl = lineAbove(entryPrice, filt, frama, hband)
+    tp = shortTakeProfit(entryPrice, filt, lband, framaLower)
+    status = preview ? "Live preview: disappears if the candle fails to confirm" : "Confirmed Range signal"
+    "Sell\n" + status + "\nEntry: " + fmt(entryPrice) + "\nTP: " + fmt(tp) + "\nSL: " + fmt(sl)
+
+// Historical bars: only confirmed original Range labels. No extra pre-trigger history.
+if rangeBuy and barstate.isconfirmed
+    label.new(bar_index, low, "Buy", xloc=xloc.bar_index, yloc=yloc.belowbar,
+         style=label.style_label_up, color=color.new(color.lime, 0), textcolor=color.black,
+         size=size.small, tooltip=buyTip(close, false))
+
+if rangeSell and barstate.isconfirmed
+    label.new(bar_index, high, "Sell", xloc=xloc.bar_index, yloc=yloc.abovebar,
+         style=label.style_label_down, color=color.new(color.red, 0), textcolor=color.white,
+         size=size.small, tooltip=sellTip(close, false))
+
+// Realtime current bar: preview the same original Range signal before close.
+var label livePreviewLabel = na
+if barstate.islast
+    if not na(livePreviewLabel)
+        label.delete(livePreviewLabel)
+        livePreviewLabel := na
+
+    liveBuy = showLivePreview and not barstate.isconfirmed and rangeBuy
+    liveSell = showLivePreview and not barstate.isconfirmed and rangeSell
+
+    if liveBuy
+        livePreviewLabel := label.new(bar_index, low, "Buy", xloc=xloc.bar_index, yloc=yloc.belowbar,
+             style=label.style_label_up, color=color.new(color.lime, 0), textcolor=color.black,
+             size=size.small, tooltip=buyTip(close, true))
+        alert("Range Early Buy | Entry: " + fmt(close), alert.freq_once_per_bar)
+
+    if liveSell
+        livePreviewLabel := label.new(bar_index, high, "Sell", xloc=xloc.bar_index, yloc=yloc.abovebar,
+             style=label.style_label_down, color=color.new(color.red, 0), textcolor=color.white,
+             size=size.small, tooltip=sellTip(close, true))
+        alert("Range Early Sell | Entry: " + fmt(close), alert.freq_once_per_bar)
+
+alertcondition(rangeBuy, title="Range Buy", message="Range Buy")
+alertcondition(rangeSell, title="Range Sell", message="Range Sell")

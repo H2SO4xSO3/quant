@@ -1,5 +1,6 @@
 import type { CryptoStrategy } from "./strategyTypes";
 import { aberrationVolatilityBreakoutStrategy } from "./strategies/aberrationVolatilityBreakout";
+import { bitgetCompositeRouterStrategy } from "./strategies/bitgetCompositeRouter";
 import { bollingerBreakevenStrategy } from "./strategies/bollingerBreakeven";
 import { emaVwapQualityBreakoutStrategy } from "./strategies/emaVwapQualityBreakout";
 import { factorLabelAltReboundStrategy } from "./strategies/factorLabelAltRebound";
@@ -16,6 +17,7 @@ import { emaVwapTrendStrategy } from "./strategy";
 const strategies = [
   emaVwapTrendStrategy,
   emaVwapQualityBreakoutStrategy,
+  bitgetCompositeRouterStrategy,
   bollingerBreakevenStrategy,
   aberrationVolatilityBreakoutStrategy,
   factorLabelCapitulationReclaimStrategy,
@@ -36,3 +38,4 @@ export function getStrategyById(id = emaVwapTrendStrategy.id): CryptoStrategy {
 export function listStrategies(): CryptoStrategy[] {
   return strategies;
 }
+
