@@ -138,4 +138,28 @@ describe("Bitget volume signal research runner", () => {
       candleCacheDir: "cache"
     });
   });
+
+  it("matches baseline count to completed signals when recent events are pending", () => {
+    const cells = buildResearchMatrix({
+      observations: [
+        { symbol: "BTCUSDT", timestampMs: 0, direction: "long_watch", rawScore: 59 },
+        { symbol: "BTCUSDT", timestampMs: 300_000, direction: "long_watch", rawScore: 71 },
+        { symbol: "BTCUSDT", timestampMs: 4_200_000, direction: "long_watch", rawScore: 68 },
+        { symbol: "BTCUSDT", timestampMs: 7_500_000, direction: "long_watch", rawScore: 72 }
+      ],
+      bars: [
+        { symbol: "BTCUSDT", openTimeMs: 600_000, open: 100, high: 101, low: 99, close: 100 },
+        { symbol: "BTCUSDT", openTimeMs: 4_200_000, open: 102, high: 103, low: 101, close: 102 },
+        { symbol: "BTCUSDT", openTimeMs: 7_800_000, open: 101, high: 102, low: 100, close: 101 }
+      ],
+      thresholds: [70],
+      horizonsMinutes: [60],
+      roundTripCostsPct: [0.2],
+      primaryCooldownMinutes: 0
+    });
+    const primary = cells.find((cell) => cell.sample === "primary" && cell.direction === "all");
+
+    expect(primary?.summary).toMatchObject({ completed: 1, pending: 1 });
+    expect(primary?.comparison).toMatchObject({ signalCount: 1, baselineCount: 1 });
+  });
 });

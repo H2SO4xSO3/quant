@@ -220,18 +220,20 @@ export function buildResearchMatrix(options: {
           const events = direction === "all" ? allEvents : allEvents.filter((event) => event.direction === direction);
           for (const roundTripCostPct of options.roundTripCostsPct) {
             const labels = labelSignalEvents({ events, bars: options.bars, horizonMinutes, roundTripCostPct });
-            const signalReturns = labels.flatMap((label) =>
-              label.status === "completed" && label.netDirectionalReturnPct !== undefined ? [label.netDirectionalReturnPct] : []
+            const completedLabels = labels.filter(
+              (label): label is typeof label & { netDirectionalReturnPct: number } =>
+                label.status === "completed" && label.netDirectionalReturnPct !== undefined
             );
+            const signalReturns = completedLabels.map((label) => label.netDirectionalReturnPct);
             const baselineCache = new Map<string, number[]>();
-            const baselineReturns = events.flatMap((event) => {
-              const key = `${event.symbol}:${event.direction}`;
+            const baselineReturns = completedLabels.flatMap((label) => {
+              const key = `${label.symbol}:${label.direction}`;
               let pool = baselineCache.get(key);
               if (!pool) {
                 pool = buildNonOverlappingBaselineReturns({
                   bars: options.bars,
-                  symbol: event.symbol,
-                  direction: event.direction,
+                  symbol: label.symbol,
+                  direction: label.direction,
                   horizonMinutes,
                   roundTripCostPct,
                   startTimeMs: firstObservationMs,
@@ -242,7 +244,7 @@ export function buildResearchMatrix(options: {
               if (pool.length === 0) {
                 return [];
               }
-              const deterministicIndex = Math.abs(Math.floor(event.timestampMs / 300_000)) % pool.length;
+              const deterministicIndex = Math.abs(Math.floor(label.timestampMs / 300_000)) % pool.length;
               return [pool[deterministicIndex]];
             });
 
