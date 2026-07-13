@@ -314,8 +314,12 @@ function loadCachedBars(cachePath: string, startTimeMs: number, endTimeMs: numbe
   return ordered;
 }
 
+export function floorFiveMinuteOpenTime(timestampMs: number): number {
+  return Math.floor(timestampMs / 300_000) * 300_000;
+}
+
 export function lastClosedFiveMinuteOpenTime(nowMs: number): number {
-  return Math.floor(nowMs / 300_000) * 300_000 - 300_000;
+  return floorFiveMinuteOpenTime(nowMs) - 300_000;
 }
 
 export function findFiveMinuteCandleGaps(
@@ -420,7 +424,7 @@ export async function runBitgetVolumeSignalResearch(args = process.argv.slice(2)
   }
 
   const symbols = [...new Set(observations.map((row) => row.symbol))].sort();
-  const startTimeMs = Math.min(...observations.map((row) => row.timestampMs)) - 300_000;
+  const startTimeMs = floorFiveMinuteOpenTime(Math.min(...observations.map((row) => row.timestampMs)) - 300_000);
   const endTimeMs = lastClosedFiveMinuteOpenTime(Date.now());
   const bars = await fetchResearchBars({ symbols, startTimeMs, endTimeMs, cacheDir: options.candleCacheDir });
   if (bars.length === 0) {

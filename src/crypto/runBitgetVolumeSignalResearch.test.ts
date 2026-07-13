@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildResearchMatrix,
   findFiveMinuteCandleGaps,
+  floorFiveMinuteOpenTime,
   lastClosedFiveMinuteOpenTime,
   parseVolumeSignalResearchArgs,
   parseStoredContextJsonl,
@@ -199,6 +200,12 @@ describe("Bitget volume signal research runner", () => {
 
   it("uses the last fully closed five-minute candle as the fetch boundary", () => {
     expect(lastClosedFiveMinuteOpenTime(Date.parse("2026-07-13T07:06:30.000Z"))).toBe(Date.parse("2026-07-13T07:00:00.000Z"));
+  });
+
+  it("aligns the research start to a five-minute candle boundary", () => {
+    expect(floorFiveMinuteOpenTime(Date.parse("2026-07-06T15:16:43.867Z"))).toBe(
+      Date.parse("2026-07-06T15:15:00.000Z")
+    );
   });
 
   it("detects missing five-minute candles at pagination boundaries", () => {
