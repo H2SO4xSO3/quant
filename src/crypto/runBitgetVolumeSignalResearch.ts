@@ -302,10 +302,14 @@ function loadCachedBars(cachePath: string, startTimeMs: number, endTimeMs: numbe
   const ordered = rows.sort((left, right) => left.openTimeMs - right.openTimeMs);
   const first = ordered[0]?.openTimeMs;
   const last = ordered.at(-1)?.openTimeMs;
-  if (first === undefined || last === undefined || first > startTimeMs + 300_000 || last < endTimeMs - 600_000) {
+  if (first === undefined || last === undefined || first > startTimeMs + 300_000 || last < endTimeMs) {
     return undefined;
   }
   return ordered;
+}
+
+export function lastClosedFiveMinuteOpenTime(nowMs: number): number {
+  return Math.floor(nowMs / 300_000) * 300_000 - 300_000;
 }
 
 async function fetchResearchBars(options: {
@@ -380,7 +384,7 @@ export async function runBitgetVolumeSignalResearch(args = process.argv.slice(2)
 
   const symbols = [...new Set(observations.map((row) => row.symbol))].sort();
   const startTimeMs = Math.min(...observations.map((row) => row.timestampMs)) - 300_000;
-  const endTimeMs = Math.floor(Date.now() / 300_000) * 300_000;
+  const endTimeMs = lastClosedFiveMinuteOpenTime(Date.now());
   const bars = await fetchResearchBars({ symbols, startTimeMs, endTimeMs, cacheDir: options.candleCacheDir });
   if (bars.length === 0) {
     throw new Error("blocked=data_missing no Bitget 5m candles");

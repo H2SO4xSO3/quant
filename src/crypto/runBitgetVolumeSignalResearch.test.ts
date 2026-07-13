@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildResearchMatrix,
+  lastClosedFiveMinuteOpenTime,
   parseVolumeSignalResearchArgs,
   parseStoredContextJsonl,
   reconstructHistoricalScoreObservations,
@@ -193,5 +194,9 @@ describe("Bitget volume signal research runner", () => {
 
     expect(primary?.summary).toMatchObject({ completed: 1, pending: 1 });
     expect(primary?.comparison).toMatchObject({ signalCount: 1, baselineCount: 1 });
+  });
+
+  it("uses the last fully closed five-minute candle as the fetch boundary", () => {
+    expect(lastClosedFiveMinuteOpenTime(Date.parse("2026-07-13T07:06:30.000Z"))).toBe(Date.parse("2026-07-13T07:00:00.000Z"));
   });
 });
