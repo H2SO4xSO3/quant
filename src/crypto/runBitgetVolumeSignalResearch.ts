@@ -115,16 +115,34 @@ export function renderChineseVolumeSignalReport(report: BitgetVolumeSignalResear
     .sort(([left], [right]) => left.localeCompare(right))
     .map(([symbol, score]) => `- ${symbol} rawScore=${score.rawScore.toFixed(1)} direction=${score.direction}`);
   const primaryCells = report.cells.filter(
-    (cell) => cell.sample === "primary" && cell.threshold === 70 && cell.roundTripCostPct === 0.2 && cell.direction === "all"
+    (cell) => cell.sample === "primary" && cell.roundTripCostPct === 0.2 && cell.direction === "all"
   );
   const primaryRows = primaryCells.map(
     (cell) =>
-      `| ${cell.horizonMinutes} | ${cell.summary.completed} | ${display(cell.summary.meanNetReturnPct)} | ${display(
+      `| ${cell.threshold} | ${cell.horizonMinutes} | ${cell.summary.completed} | ${cell.summary.pending} | ${display(
+        cell.summary.meanNetReturnPct
+      )} | ${display(cell.summary.winRatePct)} | ${display(
         cell.comparison.baselineMeanPct
       )} | ${display(cell.comparison.signalMinusBaselineMeanPct)} | ${
         cell.comparison.excessMeanCi95Pct ? cell.comparison.excessMeanCi95Pct.map((value) => value.toFixed(4)).join(" ~ ") : "n/a"
       } |`
   );
+  const diagnosticRows = report.cells
+    .filter(
+      (cell) =>
+        cell.sample === "diagnostic" &&
+        cell.threshold === 70 &&
+        cell.roundTripCostPct === 0.2 &&
+        cell.direction === "all"
+    )
+    .map(
+      (cell) =>
+        `| ${cell.horizonMinutes} | ${cell.summary.completed} | ${cell.summary.pending} | ${display(
+          cell.summary.meanNetReturnPct
+        )} | ${display(cell.summary.winRatePct)} | ${display(cell.comparison.signalMinusBaselineMeanPct)} | ${
+          cell.comparison.excessMeanCi95Pct ? cell.comparison.excessMeanCi95Pct.map((value) => value.toFixed(4)).join(" ~ ") : "n/a"
+        } |`
+    );
 
   return [
     "# Bitget量价评分事件研究",
@@ -148,11 +166,19 @@ export function renderChineseVolumeSignalReport(report: BitgetVolumeSignalResear
     "",
     "## 主要样本",
     "",
-    "阈值70、24小时冷却、往返成本0.20%。",
+    "24小时冷却、往返成本0.20%。",
     "",
-    "| 持有分钟 | 完成事件 | 信号净均值% | 基准均值% | 超额均值% | 超额均值95%区间 |",
-    "| ---: | ---: | ---: | ---: | ---: | :--- |",
-    ...(primaryRows.length ? primaryRows : ["| n/a | 0 | n/a | n/a | n/a | n/a |"]),
+    "| 阈值 | 持有分钟 | 完成 | 待完成 | 信号净均值% | 胜率% | 基准均值% | 超额均值% | 超额均值95%区间 |",
+    "| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | :--- |",
+    ...(primaryRows.length ? primaryRows : ["| n/a | n/a | 0 | 0 | n/a | n/a | n/a | n/a | n/a |"]),
+    "",
+    "## 70分诊断样本",
+    "",
+    "按持有周期冷却、往返成本0.20%；仅用于诊断，不能升级研究状态。",
+    "",
+    "| 持有分钟 | 完成 | 待完成 | 信号净均值% | 胜率% | 超额均值% | 超额均值95%区间 |",
+    "| ---: | ---: | ---: | ---: | ---: | ---: | :--- |",
+    ...(diagnosticRows.length ? diagnosticRows : ["| n/a | 0 | 0 | n/a | n/a | n/a | n/a |"]),
     "",
     "说明：未完成未来周期的事件不进入统计；该报告不连接模拟或实盘交易。",
     ""

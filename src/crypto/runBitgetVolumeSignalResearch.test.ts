@@ -56,7 +56,38 @@ describe("Bitget volume signal research runner", () => {
       },
       candleCoverage: [],
       crossingCounts: {},
-      cells: [],
+      cells: [
+        {
+          sample: "primary",
+          threshold: 65,
+          direction: "all",
+          horizonMinutes: 60,
+          cooldownMinutes: 1_440,
+          roundTripCostPct: 0.2,
+          crossingEvents: 10,
+          summary: {
+            completed: 9,
+            pending: 1,
+            meanNetReturnPct: -0.2,
+            medianNetReturnPct: -0.1,
+            winRatePct: 33.33,
+            profitFactor: 0.8,
+            meanCi95Pct: [-0.5, 0.1],
+            meanMfePct: 0.4,
+            meanMaePct: -0.5
+          },
+          comparison: {
+            signalCount: 9,
+            baselineCount: 9,
+            signalMeanPct: -0.2,
+            signalMedianPct: -0.1,
+            baselineMeanPct: -0.25,
+            baselineMedianPct: -0.2,
+            signalMinusBaselineMeanPct: 0.05,
+            excessMeanCi95Pct: [-0.1, 0.2]
+          }
+        }
+      ],
       grade: {
         action: "hold",
         rawScore: 75.7,
@@ -71,6 +102,7 @@ describe("Bitget volume signal research runner", () => {
     expect(markdown).toContain("state=no_trade");
     expect(markdown).toContain("blocked=sample_too_small");
     expect(markdown).toContain("next_check=collect more independent threshold-70 events");
+    expect(markdown).toContain("| 65 | 60 | 9 | 1 | -0.2000 |");
   });
 
   it("reconstructs scores only after 168 hours of prior context", () => {
