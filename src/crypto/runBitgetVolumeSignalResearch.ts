@@ -302,7 +302,13 @@ function loadCachedBars(cachePath: string, startTimeMs: number, endTimeMs: numbe
   const ordered = rows.sort((left, right) => left.openTimeMs - right.openTimeMs);
   const first = ordered[0]?.openTimeMs;
   const last = ordered.at(-1)?.openTimeMs;
-  if (first === undefined || last === undefined || first > startTimeMs + 300_000 || last < endTimeMs) {
+  if (
+    first === undefined ||
+    last === undefined ||
+    first > startTimeMs + 300_000 ||
+    last < endTimeMs ||
+    findFiveMinuteCandleGaps(ordered).length > 0
+  ) {
     return undefined;
   }
   return ordered;
@@ -310,6 +316,32 @@ function loadCachedBars(cachePath: string, startTimeMs: number, endTimeMs: numbe
 
 export function lastClosedFiveMinuteOpenTime(nowMs: number): number {
   return Math.floor(nowMs / 300_000) * 300_000 - 300_000;
+}
+
+export function findFiveMinuteCandleGaps(
+  bars: ResearchPriceBar[]
+): Array<{ symbol: string; afterMs: number; beforeMs: number; missingBars: number }> {
+  const grouped = new Map<string, ResearchPriceBar[]>();
+  for (const bar of bars) {
+    const symbol = bar.symbol.toUpperCase();
+    grouped.set(symbol, [...(grouped.get(symbol) ?? []), { ...bar, symbol }]);
+  }
+  const gaps: Array<{ symbol: string; afterMs: number; beforeMs: number; missingBars: number }> = [];
+  for (const [symbol, rows] of grouped) {
+    rows.sort((left, right) => left.openTimeMs - right.openTimeMs);
+    for (let index = 1; index < rows.length; index += 1) {
+      const deltaMs = rows[index].openTimeMs - rows[index - 1].openTimeMs;
+      if (deltaMs > 300_000) {
+        gaps.push({
+          symbol,
+          afterMs: rows[index - 1].openTimeMs,
+          beforeMs: rows[index].openTimeMs,
+          missingBars: Math.round(deltaMs / 300_000) - 1
+        });
+      }
+    }
+  }
+  return gaps;
 }
 
 async function fetchResearchBars(options: {
@@ -329,7 +361,8 @@ async function fetchResearchBars(options: {
         productType: "USDT-FUTURES",
         interval: "5m",
         startTime: options.startTimeMs,
-        endTime: options.endTimeMs
+        endTime: options.endTimeMs,
+        maxWindowMs: 12 * 60 * 60 * 1000
       });
       const fetchedBars: ResearchPriceBar[] = rows.map((row) => ({
         symbol,
@@ -339,6 +372,10 @@ async function fetchResearchBars(options: {
         low: Number(row[3]),
         close: Number(row[4])
       }));
+      const gaps = findFiveMinuteCandleGaps(fetchedBars);
+      if (gaps.length > 0) {
+        throw new Error(`blocked=data_missing candle_gaps symbol=${symbol} count=${gaps.length}`);
+      }
       symbolBars = fetchedBars;
       writeFileSync(cachePath, `${JSON.stringify(fetchedBars)}\n`, "utf8");
     }

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildResearchMatrix,
+  findFiveMinuteCandleGaps,
   lastClosedFiveMinuteOpenTime,
   parseVolumeSignalResearchArgs,
   parseStoredContextJsonl,
@@ -198,5 +199,14 @@ describe("Bitget volume signal research runner", () => {
 
   it("uses the last fully closed five-minute candle as the fetch boundary", () => {
     expect(lastClosedFiveMinuteOpenTime(Date.parse("2026-07-13T07:06:30.000Z"))).toBe(Date.parse("2026-07-13T07:00:00.000Z"));
+  });
+
+  it("detects missing five-minute candles at pagination boundaries", () => {
+    expect(
+      findFiveMinuteCandleGaps([
+        { symbol: "BTCUSDT", openTimeMs: 0, open: 100, high: 100, low: 100, close: 100 },
+        { symbol: "BTCUSDT", openTimeMs: 600_000, open: 101, high: 101, low: 101, close: 101 }
+      ])
+    ).toEqual([{ symbol: "BTCUSDT", afterMs: 0, beforeMs: 600_000, missingBars: 1 }]);
   });
 });
