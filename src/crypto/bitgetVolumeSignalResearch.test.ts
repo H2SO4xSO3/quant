@@ -23,6 +23,26 @@ describe("Bitget volume threshold events", () => {
     expect(events.map((event) => event.timestampMs)).toEqual([300_000]);
   });
 
+  it("requires a fresh below-to-above crossing after cooldown", () => {
+    const events = extractThresholdCrossings(
+      [
+        { symbol: "BTCUSDT", timestampMs: 0, direction: "short_watch", rawScore: 71 },
+        { symbol: "BTCUSDT", timestampMs: 3_600_000, direction: "short_watch", rawScore: 68 },
+        { symbol: "BTCUSDT", timestampMs: 7_200_000, direction: "short_watch", rawScore: 72 }
+      ],
+      70,
+      60
+    );
+
+    expect(events).toHaveLength(2);
+  });
+
+  it("preserves the observation fields on the emitted event", () => {
+    const observation = { symbol: "btcusdt", timestampMs: 300_000, direction: "long_watch" as const, rawScore: 70 };
+
+    expect(extractThresholdCrossings([observation], 70, 0)).toEqual([{ ...observation, threshold: 70 }]);
+  });
+
   it("enters strictly after the observation and subtracts round-trip cost", () => {
     const [label] = labelSignalEvents({
       events: [

@@ -88,7 +88,7 @@ export function extractThresholdCrossings(
   const events: SignalEvent[] = [];
 
   for (const observation of [...observations].sort((left, right) => left.timestampMs - right.timestampMs)) {
-    const symbol = observation.symbol.toUpperCase();
+    const symbol = observation.symbol;
     const state = states.get(symbol) ?? { above: false, lastAcceptedMs: Number.NEGATIVE_INFINITY };
     const above = observation.rawScore >= threshold;
     const crossed = above && !state.above;
