@@ -347,3 +347,43 @@ Expected: all tests pass, typecheck exits 0, and no whitespace errors exist in t
 
 Run live read-only checks for `quant-bitget-volume-collector`, the latest JSONL timestamp, and `volume-observe-latest.json`. Expected: collector and observer timestamps continue advancing.
 
+### Task 6: Refresh Mature-Coverage Next Check and Redeploy Observer
+
+**Files:**
+- Modify: `src/crypto/bitgetVolumeObservation.test.ts`
+- Modify: `src/crypto/bitgetVolumeObservation.ts`
+
+**Interfaces:**
+- Preserves: `BitgetVolumeObservationReport.nextCheck: string`.
+- Changes: mature coverage no longer asks for another seven-day wait.
+
+- [ ] **Step 1: Add a failing mature-coverage regression test**
+
+Add a public-interface assertion that a report with at least `168h` coverage sets `nextCheck` to forward-return validation and does not contain `rerun after 7d coverage`.
+
+- [ ] **Step 2: Run RED**
+
+Run: `npm.cmd test -- src/crypto/bitgetVolumeObservation.test.ts`
+
+Expected: FAIL because `nextCheck` still contains the stale seven-day instruction.
+
+- [ ] **Step 3: Implement the minimal dynamic instruction**
+
+Keep the current instruction below `minHours`. At or above `minHours`, emit `validate score against forward returns; keep score as blocker/feature, not execution trigger`.
+
+- [ ] **Step 4: Run GREEN and full verification**
+
+Run:
+
+```powershell
+npm.cmd test -- src/crypto/bitgetVolumeObservation.test.ts
+npm.cmd test
+npm.cmd run typecheck
+```
+
+Expected: focused and full suites pass; typecheck exits `0`.
+
+- [ ] **Step 5: Commit and deploy only the observer files**
+
+Commit `src/crypto/bitgetVolumeObservation.ts` and its test with subject `fix: refresh mature Bitget volume next check`. Copy the runtime observer file to `/opt/quant-bot`, run the observer once, and verify the live JSON output no longer contains the stale instruction for mature symbols. Do not alter collector cadence or connect an execution gate.
+
