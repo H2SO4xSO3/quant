@@ -91,4 +91,28 @@ describe("Bitget volume observation scoring", () => {
     expect(reports[0].blocked).toContain("insufficient_volume_history 48h<168h");
     expect(reports[0].blocked).toContain("observe_only no execution gate connected");
   });
+
+  it("switches to forward-return validation once coverage matures", () => {
+    const reports = buildBitgetVolumeObservationReports({
+      minHours: 168,
+      contexts: [
+        context({
+          symbol: "BTCUSDT",
+          timestampReceived: "2026-06-24T15:00:00.000Z",
+          openInterest: { symbol: "BTCUSDT", timestampMs: 1_000, openInterest: 100 }
+        }),
+        context({
+          symbol: "BTCUSDT",
+          timestampReceived: "2026-07-01T15:00:00.000Z",
+          openInterest: { symbol: "BTCUSDT", timestampMs: 2_000, openInterest: 100 }
+        })
+      ]
+    });
+
+    expect(reports[0].evidence.hours).toBe(168);
+    expect(reports[0].nextCheck).toBe(
+      "validate score against forward returns; keep score as blocker/feature, not execution trigger"
+    );
+    expect(reports[0].nextCheck).not.toContain("rerun after 7d coverage");
+  });
 });

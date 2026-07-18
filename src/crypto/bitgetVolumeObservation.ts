@@ -169,7 +169,10 @@ export function buildBitgetVolumeObservationReports(options: BitgetVolumeObserva
         positionLongShortRatio: positionLongShort ? round(positionLongShort.longShortPositionRatio, 3) : null,
         latestFundingRatePct: round(latestFundingRate * 100, 4)
       },
-      nextCheck: "rerun after 7d coverage; then connect score as blocker/feature, not execution trigger"
+      nextCheck:
+        hours < minHours
+          ? "rerun after 7d coverage; then connect score as blocker/feature, not execution trigger"
+          : "validate score against forward returns; keep score as blocker/feature, not execution trigger"
     });
   }
 
