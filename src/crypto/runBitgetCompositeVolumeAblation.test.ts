@@ -37,6 +37,17 @@ describe("Bitget composite volume ablation runner", () => {
 
     expect(cachedCandlesCoverRange(rows, 0, 900_000, "5m")).toBe(true);
     expect(cachedCandlesCoverRange(rows, 0, 1_500_000, "5m")).toBe(false);
+    expect(
+      cachedCandlesCoverRange(
+        [
+          [300_000, "100", "101", "99", "100", "1", 599_999, "100"],
+          [900_000, "100", "101", "99", "100", "1", 1_199_999, "100"]
+        ],
+        0,
+        1_200_000,
+        "5m"
+      )
+    ).toBe(false);
   });
 
   it("parses input and cache paths without changing defaults", () => {

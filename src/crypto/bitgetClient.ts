@@ -8,6 +8,11 @@ interface BitgetCandlesResponse {
 
 const BITGET_BASE_URL = "https://api.bitget.com";
 const ONE_MINUTE_MS = 60_000;
+const DEFAULT_PAGE_DELAY_MS = 75;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 function toNumber(value: unknown): number {
   const parsed = Number(value);
@@ -32,8 +37,10 @@ export async function fetchBitgetHistoryCandles(options: {
   startTime: number;
   endTime: number;
   limit?: number;
+  pageDelayMs?: number;
 }): Promise<ParsedKline[]> {
   const limit = options.limit ?? 200;
+  const pageDelayMs = options.pageDelayMs ?? DEFAULT_PAGE_DELAY_MS;
   const rows: ParsedKline[] = [];
   let cursorEnd = options.endTime;
 
@@ -60,11 +67,14 @@ export async function fetchBitgetHistoryCandles(options: {
     }
     rows.push(...chunk);
     const firstOpenTime = Math.min(...chunk.map((row) => row.openTime));
-    const nextCursorEnd = firstOpenTime - ONE_MINUTE_MS;
+    const nextCursorEnd = firstOpenTime;
     if (nextCursorEnd >= cursorEnd) {
       break;
     }
     cursorEnd = nextCursorEnd;
+    if (pageDelayMs > 0) {
+      await sleep(pageDelayMs);
+    }
   }
 
   const seen = new Set<number>();

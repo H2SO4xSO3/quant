@@ -91,3 +91,16 @@ Source snapshot SHA-256: `463c9442371271c11266c2f132e5623e1cae185ced9b8ab17fd7a0
 - Final grade: `action=hold`, `rawScore=67.2`, `state=no_trade`, `blocked=sample_too_small`, `evidence=paired_completed_max=5 required=30`.
 
 The observer was deployed to `/opt/quant-bot` and scheduled daily at `04:40 UTC` (`12:40 Asia/Shanghai`) under cron marker `quant-bitget-composite-volume-ablation`. It remains disconnected from execution.
+
+## Reproducibility Correction
+
+The live candidate count briefly changed from five to six and then back to five. Diagnosis found that the Bitget history pagination cursor subtracted one minute at each 200-row boundary. Because the API applies interval-close semantics, this dropped one candle per page and moved the missing timestamps whenever the request end time changed.
+
+The fix overlaps each page at the earliest returned candle and de-duplicates by open time. It also adds a 75ms page delay to avoid `HTTP 429` bursts and rejects candle caches with internal interval gaps.
+
+Regression evidence used frozen input SHA-256 `94c5f874f2be15c044e28c6d8afaddf76d97a83f92bea59326d15ee5f4073da9`:
+
+- two independent full downloads produced five candidates with zero candidate-ID differences;
+- both candidate ledgers had SHA-256 `21c7c29459be154a22c7ae95ba4f08a8b38f4c18f85c6e33fd1973ab501b2420`;
+- BTCUSDT and XRPUSDT 5m/15m/1h caches had zero interval gaps and zero changed overlapping candles;
+- neither corrected run hit the previous `Bitget candles HTTP 429` failure.

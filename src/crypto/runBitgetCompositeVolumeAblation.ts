@@ -206,9 +206,11 @@ export function cachedCandlesCoverRange(
   const intervalMs = interval === "5m" ? 300_000 : interval === "15m" ? 900_000 : 3_600_000;
   const firstOpen = Number(rows[0]?.[0]);
   const lastOpen = Number(rows.at(-1)?.[0]);
+  const hasGap = rows.some((row, index) => index > 0 && Number(row[0]) - Number(rows[index - 1][0]) !== intervalMs);
   return (
     Number.isFinite(firstOpen) &&
     Number.isFinite(lastOpen) &&
+    !hasGap &&
     firstOpen <= startTime + intervalMs &&
     lastOpen >= endTime - intervalMs
   );
