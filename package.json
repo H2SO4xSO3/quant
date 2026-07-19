@@ -55,7 +55,8 @@
                     "backtest:ablation":  "tsx src/crypto/runBacktestAblation.ts",
                     "bitget-volume-research":  "tsx src/crypto/runBitgetVolumeResearch.ts",
                     "bitget-volume-collect":  "tsx src/crypto/runBitgetVolumeCollector.ts",
-                    "bitget-volume-observe":  "tsx src/crypto/runBitgetVolumeObserve.ts"
+                    "bitget-volume-observe":  "tsx src/crypto/runBitgetVolumeObserve.ts",
+                    "bitget-composite-volume-ablation":  "tsx src/crypto/runBitgetCompositeVolumeAblation.ts"
                 },
     "dependencies":  {
                          "express":  "^5.2.1"

@@ -62,13 +62,24 @@ function newest<T extends { timestampMs: number }>(rows: T[] | undefined): T | u
   return [...rows].sort((a, b) => b.timestampMs - a.timestampMs)[0];
 }
 
-function previousAtOrBefore(rows: StoredBitgetMarketContext[], timestampMs: number): StoredBitgetMarketContext {
-  return [...rows].reverse().find((row) => Date.parse(row.timestampReceived) <= timestampMs) ?? rows[0];
+function previousAtOrBefore(rows: StoredBitgetMarketContext[], timestampMs: number, endIndex: number): StoredBitgetMarketContext {
+  let low = 0;
+  let high = endIndex;
+  let match = rows[0];
+  while (low <= high) {
+    const middle = Math.floor((low + high) / 2);
+    if (Date.parse(rows[middle].timestampReceived) <= timestampMs) {
+      match = rows[middle];
+      low = middle + 1;
+    } else {
+      high = middle - 1;
+    }
+  }
+  return match;
 }
 
-function sumTakerWindow(rows: StoredBitgetMarketContext[]): { buyVolume: number; sellVolume: number } {
-  const latest = rows.at(-1);
-  const window = latest?.takerBuySell.slice(0, 30) ?? [];
+function sumTakerWindow(latest: StoredBitgetMarketContext): { buyVolume: number; sellVolume: number } {
+  const window = latest.takerBuySell.slice(0, 30);
   return window.reduce(
     (total, row) => ({
       buyVolume: total.buyVolume + row.buyVolume,
@@ -87,7 +98,12 @@ function groupBySymbol(contexts: StoredBitgetMarketContext[]): Map<string, Store
   const grouped = new Map<string, StoredBitgetMarketContext[]>();
   for (const context of contexts) {
     const symbol = context.symbol.toUpperCase();
-    grouped.set(symbol, [...(grouped.get(symbol) ?? []), context]);
+    const rows = grouped.get(symbol);
+    if (rows) {
+      rows.push(context);
+    } else {
+      grouped.set(symbol, [context]);
+    }
   }
   for (const rows of grouped.values()) {
     rows.sort((a, b) => Date.parse(a.timestampReceived) - Date.parse(b.timestampReceived));
@@ -95,28 +111,30 @@ function groupBySymbol(contexts: StoredBitgetMarketContext[]): Map<string, Store
   return grouped;
 }
 
-export function buildBitgetVolumeObservationReports(options: BitgetVolumeObservationOptions): BitgetVolumeObservationReport[] {
+export function buildBitgetVolumeObservationReportForRows(
+  rows: StoredBitgetMarketContext[],
+  options: { endIndex?: number; minHours?: number; minRawScore?: number } = {}
+): BitgetVolumeObservationReport | undefined {
   const minHours = options.minHours ?? 168;
   const minRawScore = options.minRawScore ?? 70;
-  const reports: BitgetVolumeObservationReport[] = [];
-
-  for (const [symbol, rows] of groupBySymbol(options.contexts)) {
-    const first = rows[0];
-    const last = rows.at(-1);
-    if (!first || !last) {
-      continue;
-    }
+  const endIndex = Math.min(options.endIndex ?? rows.length - 1, rows.length - 1);
+  const first = rows[0];
+  const last = rows[endIndex];
+  if (!first || !last) {
+    return undefined;
+  }
+  const symbol = last.symbol.toUpperCase();
 
     const lastMs = Date.parse(last.timestampReceived);
     const hours = (lastMs - Date.parse(first.timestampReceived)) / 36e5;
-    const prior24 = previousAtOrBefore(rows, lastMs - 24 * 60 * 60 * 1000);
-    const prior12 = previousAtOrBefore(rows, lastMs - 12 * 60 * 60 * 1000);
+    const prior24 = previousAtOrBefore(rows, lastMs - 24 * 60 * 60 * 1000, endIndex);
+    const prior12 = previousAtOrBefore(rows, lastMs - 12 * 60 * 60 * 1000, endIndex);
     const oiNow = last.openInterest?.openInterest ?? 0;
     const openInterest24hPct = pct(oiNow, prior24.openInterest?.openInterest ?? 0);
     const openInterest12hPct = pct(oiNow, prior12.openInterest?.openInterest ?? 0);
     const latestTaker = newest(last.takerBuySell);
     const latestTakerImbalance = imbalance(latestTaker?.buyVolume ?? 0, latestTaker?.sellVolume ?? 0);
-    const takerWindow = sumTakerWindow(rows);
+    const takerWindow = sumTakerWindow(last);
     const takerWindowImbalance = imbalance(takerWindow.buyVolume, takerWindow.sellVolume);
     const longShort = newest(last.longShort);
     const accountLongShort = newest(last.accountLongShort);
@@ -146,7 +164,7 @@ export function buildBitgetVolumeObservationReports(options: BitgetVolumeObserva
     }
     blockers.push("observe_only no execution gate connected");
 
-    reports.push({
+    return {
       symbol,
       action: "hold",
       direction: longScore >= shortScore ? "long_watch" : "short_watch",
@@ -156,7 +174,7 @@ export function buildBitgetVolumeObservationReports(options: BitgetVolumeObserva
       state: "observe_only",
       blocked: blockers.join("; "),
       evidence: {
-        samples: rows.length,
+        samples: endIndex + 1,
         hours: round(hours, 2),
         first: first.timestampReceived,
         last: last.timestampReceived,
@@ -173,8 +191,16 @@ export function buildBitgetVolumeObservationReports(options: BitgetVolumeObserva
         hours < minHours
           ? "rerun after 7d coverage; then connect score as blocker/feature, not execution trigger"
           : "validate score against forward returns; keep score as blocker/feature, not execution trigger"
-    });
-  }
+    };
+}
 
+export function buildBitgetVolumeObservationReports(options: BitgetVolumeObservationOptions): BitgetVolumeObservationReport[] {
+  const reports: BitgetVolumeObservationReport[] = [];
+  for (const rows of groupBySymbol(options.contexts).values()) {
+    const report = buildBitgetVolumeObservationReportForRows(rows, options);
+    if (report) {
+      reports.push(report);
+    }
+  }
   return reports;
 }

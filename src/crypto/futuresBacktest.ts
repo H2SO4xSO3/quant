@@ -41,6 +41,12 @@ export interface FuturesBacktestSymbolResult {
   exitReasons: Record<FuturesBacktestExitReason, number>;
 }
 
+export interface FuturesSignalObservation {
+  symbol: string;
+  openTime: number;
+  signal: CryptoSignal;
+}
+
 export interface FuturesBacktestResult {
   generatedAt: string;
   days: number;
@@ -221,6 +227,7 @@ export function backtestFuturesSymbolFromRows(options: {
   strategyConfig: CryptoStrategyConfig;
   signalStrategy?: CryptoStrategy;
   futuresConfig: FuturesPaperConfig;
+  observeSignal?: (observation: FuturesSignalObservation) => void;
 }): FuturesBacktestSymbolResult {
   const rows5m = options.raw5m.map(parseKline).filter((row) => row.close > 0 && row.volume > 0);
   const rows15m = options.raw15m.map(parseKline).filter((row) => row.close > 0 && row.volume > 0);
@@ -245,6 +252,7 @@ export function backtestFuturesSymbolFromRows(options: {
       analysis.marketRegime = assessMarketRegime(historicalAnalysis("BTCUSDT", benchmarkRecentRows, benchmarkHigherWindow, options.strategyConfig));
     }
     const signal = signalStrategy.generateSignal({ analysis, orderQuoteQty: options.marginUsdt, config: options.strategyConfig });
+    options.observeSignal?.({ symbol: options.symbol, openTime: current.openTime, signal });
 
     if (position) {
       const exit = exitFor(position, current, signal, options.strategyConfig);
@@ -365,6 +373,7 @@ export async function backtestFuturesSymbol(options: {
   strategyConfig: CryptoStrategyConfig;
   signalStrategy?: CryptoStrategy;
   futuresConfig: FuturesPaperConfig;
+  observeSignal?: (observation: FuturesSignalObservation) => void;
 }): Promise<FuturesBacktestSymbolResult> {
   const benchmarkSymbol = "BTCUSDT";
   const [raw5m, raw15m, rawHourly, rawBenchmark5m, rawBenchmark15m] = await Promise.all([
@@ -384,7 +393,8 @@ export async function backtestFuturesSymbol(options: {
     marginUsdt: options.marginUsdt,
     strategyConfig: options.strategyConfig,
     signalStrategy: options.signalStrategy,
-    futuresConfig: options.futuresConfig
+    futuresConfig: options.futuresConfig,
+    observeSignal: options.observeSignal
   });
 }
 
@@ -399,6 +409,7 @@ export async function runFuturesBacktest(options: {
   strategyId?: string;
   signalStrategy?: CryptoStrategy;
   futuresConfig: FuturesPaperConfig;
+  observeSignal?: (observation: FuturesSignalObservation) => void;
 }): Promise<FuturesBacktestResult> {
   const symbols: FuturesBacktestSymbolResult[] = [];
   for (const symbol of options.symbols) {
@@ -410,7 +421,8 @@ export async function runFuturesBacktest(options: {
         marginUsdt: options.marginUsdt,
         strategyConfig: options.strategyConfig,
         signalStrategy: options.signalStrategy,
-        futuresConfig: options.futuresConfig
+        futuresConfig: options.futuresConfig,
+        observeSignal: options.observeSignal
       })
     );
   }

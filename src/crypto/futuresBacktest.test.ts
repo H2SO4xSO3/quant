@@ -151,6 +151,33 @@ describe("futures backtest", () => {
     expect(result.trades[0].direction).toBe("short");
   });
 
+  it("observes every generated signal even while a position is open", () => {
+    const observations: Array<{ openTime: number; action: string }> = [];
+
+    backtestFuturesSymbolFromRows({
+      symbol: "BTCUSDT",
+      raw5m: Array.from({ length: 245 }, (_, index) => row(index)),
+      raw15m: Array.from({ length: 245 }, (_, index) => row(index)),
+      marginUsdt: 20,
+      strategyConfig: { ...DEFAULT_STRATEGY_CONFIG, signalExitScore: -1 },
+      futuresConfig,
+      signalStrategy: strategy({ action: "buy", stopLoss: 50, takeProfit: 150 }),
+      observeSignal: (observation) => {
+        observations.push({ openTime: observation.openTime, action: observation.signal.action });
+      }
+    });
+
+    expect(observations).toHaveLength(5);
+    expect(observations.map((observation) => observation.openTime)).toEqual([
+      240 * 5 * 60 * 1000,
+      241 * 5 * 60 * 1000,
+      242 * 5 * 60 * 1000,
+      243 * 5 * 60 * 1000,
+      244 * 5 * 60 * 1000
+    ]);
+    expect(observations.every((observation) => observation.action === "buy")).toBe(true);
+  });
+
   it("caps liquidation loss at the position margin", () => {
     const result = backtestFuturesSymbolFromRows({
       symbol: "SOLUSDT",

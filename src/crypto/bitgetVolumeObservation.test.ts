@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { BitgetMarketContext } from "./bitgetMarketData";
-import { buildBitgetVolumeObservationReports } from "./bitgetVolumeObservation";
+import { buildBitgetVolumeObservationReportForRows, buildBitgetVolumeObservationReports } from "./bitgetVolumeObservation";
 
 function context(overrides: Partial<BitgetMarketContext> & { timestampReceived: string; symbol: string }) {
   return {
@@ -27,6 +27,33 @@ function context(overrides: Partial<BitgetMarketContext> & { timestampReceived: 
 }
 
 describe("Bitget volume observation scoring", () => {
+  it("scores a bounded prefix without copying or regrouping later rows", () => {
+    const rows = [
+      context({
+        symbol: "BTCUSDT",
+        timestampReceived: "2026-07-01T00:00:00.000Z",
+        openInterest: { symbol: "BTCUSDT", timestampMs: 1_000, openInterest: 100 }
+      }),
+      context({
+        symbol: "BTCUSDT",
+        timestampReceived: "2026-07-01T01:00:00.000Z",
+        openInterest: { symbol: "BTCUSDT", timestampMs: 2_000, openInterest: 102 }
+      }),
+      context({
+        symbol: "BTCUSDT",
+        timestampReceived: "2026-07-01T02:00:00.000Z",
+        openInterest: { symbol: "BTCUSDT", timestampMs: 3_000, openInterest: 50 }
+      })
+    ];
+
+    const bounded = buildBitgetVolumeObservationReportForRows(rows, { endIndex: 1, minHours: 1, minRawScore: 0 });
+    const copiedPrefix = buildBitgetVolumeObservationReports({ contexts: rows.slice(0, 2), minHours: 1, minRawScore: 0 })[0];
+
+    expect(bounded).toEqual(copiedPrefix);
+    expect(bounded?.evidence.last).toBe("2026-07-01T01:00:00.000Z");
+    expect(bounded?.evidence.openInterest24hPct).toBe(2);
+  });
+
   it("keeps a weak short-leaning score as observe_only with explicit blockers", () => {
     const reports = buildBitgetVolumeObservationReports({
       minHours: 168,
